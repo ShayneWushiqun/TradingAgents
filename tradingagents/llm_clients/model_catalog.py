@@ -77,6 +77,18 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Qwen3:latest (8B, local)", "qwen3:latest"),
         ],
     },
+    "openai_compatible": {
+        "quick": [
+            ("Doubao Seed 2.0 Pro (Volcengine)", "doubao-seed-2.0-pro"),
+            ("DeepSeek Chat V3", "deepseek-chat"),
+            ("Qwen Plus", "qwen-plus"),
+        ],
+        "deep": [
+            ("Doubao Seed 2.0 Pro (Volcengine)", "doubao-seed-2.0-pro"),
+            ("DeepSeek Chat V3", "deepseek-chat"),
+            ("Qwen Plus", "qwen-plus"),
+        ],
+    },
 }
 
 

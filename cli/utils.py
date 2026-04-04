@@ -234,21 +234,25 @@ def select_deep_thinking_agent(provider) -> str:
     return choice
 
 def select_llm_provider() -> tuple[str, str | None]:
-    """Select the LLM provider and its API endpoint."""
-    BASE_URLS = [
-        ("OpenAI", "https://api.openai.com/v1"),
-        ("Google", None),  # google-genai SDK manages its own endpoint
-        ("Anthropic", "https://api.anthropic.com/"),
-        ("xAI", "https://api.x.ai/v1"),
-        ("Openrouter", "https://openrouter.ai/api/v1"),
-        ("Ollama", "http://localhost:11434/v1"),
+    """Select the LLM provider. Returns (provider_key, backend_url)."""
+    import os
+    compatible_url = os.getenv("OPENAI_COMPATIBLE_BASE_URL", "")
+    # (display_label, provider_key, backend_url)
+    PROVIDERS = [
+        ("OpenAI", "openai", "https://api.openai.com/v1"),
+        ("Google", "google", None),  # google-genai SDK manages its own endpoint
+        ("Anthropic", "anthropic", "https://api.anthropic.com/"),
+        ("xAI", "xai", "https://api.x.ai/v1"),
+        ("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
+        ("Ollama", "ollama", "http://localhost:11434/v1"),
+        (f"OpenAI Compatible ({compatible_url or 'custom'})", "openai_compatible", compatible_url),
     ]
-    
+
     choice = questionary.select(
         "Select your LLM Provider:",
         choices=[
-            questionary.Choice(display, value=(display, value))
-            for display, value in BASE_URLS
+            questionary.Choice(display, value=(provider_key, url))
+            for display, provider_key, url in PROVIDERS
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -259,15 +263,15 @@ def select_llm_provider() -> tuple[str, str | None]:
             ]
         ),
     ).ask()
-    
-    if choice is None:
-        console.print("\n[red]no OpenAI backend selected. Exiting...[/red]")
-        exit(1)
-    
-    display_name, url = choice
-    print(f"You selected: {display_name}\tURL: {url}")
 
-    return display_name, url
+    if choice is None:
+        console.print("\n[red]No LLM provider selected. Exiting...[/red]")
+        exit(1)
+
+    provider_key, url = choice
+    print(f"You selected: {provider_key}\tURL: {url}")
+
+    return provider_key, url
 
 
 def ask_openai_reasoning_effort() -> str:

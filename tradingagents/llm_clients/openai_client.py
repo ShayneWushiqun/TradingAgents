@@ -29,16 +29,19 @@ _PROVIDER_CONFIG = {
     "xai": ("https://api.x.ai/v1", "XAI_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
     "ollama": ("http://localhost:11434/v1", None),
+    "openai_compatible": (None, "OPENAI_COMPATIBLE_API_KEY"),
 }
 
 
 class OpenAIClient(BaseLLMClient):
-    """Client for OpenAI, Ollama, OpenRouter, and xAI providers.
+    """Client for OpenAI, Ollama, OpenRouter, xAI, and OpenAI-compatible providers.
 
     For native OpenAI models, uses the Responses API (/v1/responses) which
     supports reasoning_effort with function tools across all model families
     (GPT-4.1, GPT-5). Third-party compatible providers (xAI, OpenRouter,
-    Ollama) use standard Chat Completions.
+    Ollama, openai_compatible) use standard Chat Completions.
+    The openai_compatible provider supports any OpenAI-compatible API endpoint
+    such as Volcengine ARK (Doubao), DashScope (Qwen), DeepSeek, etc.
     """
 
     def __init__(
@@ -56,10 +59,14 @@ class OpenAIClient(BaseLLMClient):
         self.warn_if_unknown_model()
         llm_kwargs = {"model": self.model}
 
-        # Provider-specific base URL and auth
         if self.provider in _PROVIDER_CONFIG:
-            base_url, api_key_env = _PROVIDER_CONFIG[self.provider]
-            llm_kwargs["base_url"] = base_url
+            default_base_url, api_key_env = _PROVIDER_CONFIG[self.provider]
+            # openai_compatible uses the caller-provided base_url (from config)
+            if default_base_url is not None:
+                llm_kwargs["base_url"] = default_base_url
+            elif self.base_url:
+                llm_kwargs["base_url"] = self.base_url
+
             if api_key_env:
                 api_key = os.environ.get(api_key_env)
                 if api_key:
