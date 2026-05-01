@@ -1,6 +1,9 @@
 import os
 from typing import Any, Optional
 
+import openai
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatResult
 from langchain_openai import ChatOpenAI
 
 from .base_client import BaseLLMClient, normalize_content
@@ -14,6 +17,53 @@ class NormalizedChatOpenAI(ChatOpenAI):
     (reasoning, text, etc.). This normalizes to string for consistent
     downstream handling.
     """
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+
+        # DeepSeek thinking models require the assistant reasoning trace to be
+        # sent back when continuing a tool-call conversation. langchain-openai
+        # does not include provider-specific fields in chat/completions payloads,
+        # so preserve this field explicitly when it exists on the AIMessage.
+        if "messages" in payload:
+            messages = self._convert_input(input_).to_messages()
+            for message, message_dict in zip(messages, payload["messages"]):
+                if isinstance(message, AIMessage):
+                    reasoning_content = message.additional_kwargs.get(
+                        "reasoning_content"
+                    )
+                    if reasoning_content is not None:
+                        message_dict["reasoning_content"] = reasoning_content
+
+        return payload
+
+    def _create_chat_result(
+        self,
+        response: dict | openai.BaseModel,
+        generation_info: dict | None = None,
+    ) -> ChatResult:
+        result = super()._create_chat_result(response, generation_info)
+        response_dict = (
+            response
+            if isinstance(response, dict)
+            else response.model_dump(
+                exclude={"choices": {"__all__": {"message": {"parsed"}}}}
+            )
+        )
+
+        for choice, generation in zip(
+            response_dict.get("choices") or [], result.generations
+        ):
+            raw_message = choice.get("message") or {}
+            if (
+                isinstance(generation.message, AIMessage)
+                and "reasoning_content" in raw_message
+            ):
+                generation.message.additional_kwargs["reasoning_content"] = (
+                    raw_message["reasoning_content"]
+                )
+
+        return result
 
     def invoke(self, input, config=None, **kwargs):
         return normalize_content(super().invoke(input, config, **kwargs))
