@@ -34,6 +34,14 @@ class TestParseRating:
     def test_explicit_label_with_markdown_bold_label(self):
         assert parse_rating("**Rating**: Underweight\nTrim exposure.") == "Underweight"
 
+    def test_chinese_rating_label_underweight(self):
+        text = "**评级：Underweight（谨慎减持）**\n风险回报不对称。"
+        assert parse_rating(text) == "Underweight"
+
+    def test_chinese_rating_label_final(self):
+        text = "### **最终评级：Sell**\n清仓离场。\n前文也可提及 Hold。\n"
+        assert parse_rating(text) == "Sell"
+
     def test_rendered_pm_markdown_shape(self):
         # The exact shape produced by render_pm_decision must always parse.
         text = (

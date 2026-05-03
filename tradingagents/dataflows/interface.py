@@ -11,6 +11,12 @@ from .y_finance import (
     get_insider_transactions as get_yfinance_insider_transactions,
 )
 from .yfinance_news import get_news_yfinance, get_global_news_yfinance
+from .akshare_news import get_news as get_akshare_news
+from .akshare_news import get_global_news as get_akshare_global_news
+from .tavily_news import get_news as get_tavily_news
+from .tavily_news import get_global_news as get_tavily_global_news
+from .tushare_news_fallback import get_news as get_tushare_news_fallback
+from .tushare_news_fallback import get_global_news as get_tushare_global_news_fallback
 from .alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
     get_indicator as get_alpha_vantage_indicator,
@@ -31,6 +37,7 @@ from .tushare_stock import (
     get_income_statement as get_tushare_income_statement,
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
+from .vendor_errors import DataVendorUnavailable
 
 # Configuration and routing logic
 from .config import get_config
@@ -72,6 +79,8 @@ VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
     "tushare",
+    "akshare",
+    "tavily",
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -111,10 +120,16 @@ VENDOR_METHODS = {
     },
     # news_data
     "get_news": {
+        "akshare": get_akshare_news,
+        "tavily": get_tavily_news,
+        "tushare": get_tushare_news_fallback,
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
     },
     "get_global_news": {
+        "akshare": get_akshare_global_news,
+        "tavily": get_tavily_global_news,
+        "tushare": get_tushare_global_news_fallback,
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
     },
@@ -171,7 +186,7 @@ def route_to_vendor(method: str, *args, **kwargs):
 
         try:
             return impl_func(*args, **kwargs)
-        except AlphaVantageRateLimitError:
-            continue  # Only rate limits trigger fallback
+        except (AlphaVantageRateLimitError, DataVendorUnavailable):
+            continue
 
     raise RuntimeError(f"No available vendor for '{method}'")

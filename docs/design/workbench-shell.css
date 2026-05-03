@@ -1,0 +1,369 @@
+/**
+ * Shared chrome for TradingAgents A-Share workstation pages.
+ * Keeps top bar / sidebar / breakpoint behaviour consistent across routes.
+ */
+
+:root {
+  --wb-bg: #eef3f8;
+  --wb-surface: #ffffff;
+  --wb-surface-soft: #f7f9fc;
+  --wb-surface-blue: #edf4ff;
+  --wb-text: #101828;
+  --wb-muted: #667085;
+  --wb-line: #d9e1ec;
+  --wb-blue: #2563eb;
+  --wb-blue-dark: #1849a9;
+  --wb-green: #079455;
+  --wb-green-soft: #e8f8ef;
+  --wb-red: #d92d20;
+  --wb-amber: #b54708;
+  --wb-nav: #ffffff;
+  --wb-shadow: 0 18px 45px rgba(16, 24, 40, 0.08);
+  --wb-radius: 8px;
+  --wb-topbar-min-h: 72px;
+  --wb-rail-w: 200px;
+
+  /* Aliases — pages may use either wb-* or legacy analyze-page tokens */
+  --bg: var(--wb-bg);
+  --surface: var(--wb-surface);
+  --surface-soft: var(--wb-surface-soft);
+  --surface-blue: var(--wb-surface-blue);
+  --text: var(--wb-text);
+  --muted: var(--wb-muted);
+  --line: var(--wb-line);
+  --blue: var(--wb-blue);
+  --blue-dark: var(--wb-blue-dark);
+  --green: var(--wb-green);
+  --green-soft: var(--wb-green-soft);
+  --red: var(--wb-red);
+  --amber: var(--wb-amber);
+  --nav: var(--wb-nav);
+  --shadow: var(--wb-shadow);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-width: 0;
+  overflow-x: clip;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* --- Shell --- */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-bg);
+}
+
+.topbar {
+  flex: 0 0 auto;
+  min-height: var(--wb-topbar-min-h);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  row-gap: 10px;
+  column-gap: clamp(10px, 2.5vw, 22px);
+  padding: 10px clamp(14px, 3vw, 28px);
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-line);
+}
+
+.topbar-leading {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 2vw, 20px);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.topbar-brand {
+  flex: 0 0 auto;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--wb-muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .topbar-brand.has-collapse {
+    display: none;
+  }
+}
+
+.topbar-titles {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.topbar-titles h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 28px;
+}
+
+.topbar-titles p,
+.topbar-titles .topbar-sub {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--wb-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  min-height: 18px;
+  max-width: 100%;
+}
+
+.topbar-actions {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.shell-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--wb-rail-w) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.rail {
+  background: var(--wb-nav);
+  border-right: 1px solid var(--wb-line);
+  padding: 18px 12px 24px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.rail-title {
+  padding: 0 12px 12px;
+  color: #98a2b3;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.rail-item {
+  min-height: 52px;
+  border-radius: var(--wb-radius);
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-bottom: 6px;
+  color: var(--wb-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.rail-item:hover {
+  background: var(--wb-surface-soft);
+}
+
+.rail-item.active {
+  color: var(--wb-blue);
+  background: var(--wb-surface-blue);
+  border-color: #c7d7fe;
+}
+
+.rail-item.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  width: 4px;
+  height: 28px;
+  border-radius: 0 3px 3px 0;
+  background: var(--wb-blue);
+}
+
+.rail-item strong {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 800;
+}
+
+.rail-item span {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  opacity: 0.78;
+}
+
+.page-main {
+  min-width: 0;
+  overflow-x: clip;
+  padding: clamp(16px, 2.8vw, 26px) clamp(14px, 2.8vw, 30px) 28px;
+}
+
+/* Status pills (analyze + hot radar) */
+.status-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pill {
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pill.green {
+  background: var(--wb-green-soft);
+  color: var(--wb-green);
+}
+
+.pill.blue {
+  background: var(--wb-surface-blue);
+  color: var(--wb-blue);
+}
+
+.pill.gray {
+  background: var(--wb-surface-soft);
+  color: var(--wb-muted);
+  border: 1px solid var(--wb-line);
+}
+
+.button-link {
+  height: 40px;
+  border-radius: var(--wb-radius);
+  border: 1px solid var(--wb-blue);
+  background: var(--wb-blue);
+  color: #ffffff;
+  font-weight: 800;
+  padding: 0 14px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.button-link.secondary,
+.button-link.outline {
+  background: var(--wb-surface);
+  color: var(--wb-blue);
+}
+
+/* Narrow / tablet */
+@media (max-width: 900px) {
+  .shell-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .topbar-leading {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .rail {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    border-right: 0;
+    border-bottom: 1px solid var(--wb-line);
+    padding: 10px 12px;
+    scrollbar-width: thin;
+  }
+
+  .rail-title {
+    display: none;
+  }
+
+  .rail-item {
+    flex: 0 0 auto;
+    min-width: 112px;
+    margin-bottom: 0;
+    min-height: 48px;
+    padding: 8px 10px;
+  }
+
+  .rail-item.active::after {
+    display: none;
+  }
+
+  .topbar-actions {
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: flex-start;
+    order: 3;
+  }
+
+  .topbar-leading {
+    order: 1;
+  }
+
+  .status-pills {
+    justify-content: flex-start;
+  }
+}
+
+/* Phones */
+@media (max-width: 480px) {
+  .topbar-titles h1 {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .topbar-actions .button-link {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>历史报告 | A-Share Insight</title>
+  <link rel="stylesheet" href="/design/workbench-shell.css">
+  <style>
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .toolbar h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 28px;
+    }
+
+    .toolbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    button,
+    .button-link {
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--blue);
+      font-weight: 800;
+      padding: 0 14px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .report-layout {
+      display: grid;
+      grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+      min-width: 0;
+    }
+
+    .report-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .report-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .report-item header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .report-item strong {
+      display: block;
+      font-size: 18px;
+      line-height: 24px;
+    }
+
+    .report-item small,
+    .detail-muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .badge {
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      background: #edf4ff;
+      color: var(--blue);
+    }
+
+    .badge.completed {
+      background: #e8f8ef;
+      color: var(--green);
+    }
+
+    .badge.failed {
+      background: #fff1f0;
+      color: var(--red);
+    }
+
+    .badge.running,
+    .badge.queued {
+      background: #fff4d6;
+      color: var(--amber);
+    }
+
+    .report-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #ffffff;
+    }
+
+    .danger {
+      border-color: #fecaca;
+      background: #fff1f0;
+      color: var(--red);
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .detail-cell {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 14px;
+    }
+
+    .detail-cell span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .detail-cell strong {
+      font-size: 15px;
+      line-height: 22px;
+      overflow-wrap: anywhere;
+    }
+
+    .detail-cell.wide {
+      grid-column: 1 / -1;
+    }
+
+    @media (max-width: 1080px) {
+      .report-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-leading">
+        <div class="topbar-titles">
+          <h1>A-Share Insight</h1>
+          <p class="topbar-sub">历史报告 · MySQL 任务索引 + 项目内报告缓存</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="shell-body">
+      <nav class="rail" aria-label="主导航">
+        <div class="rail-title">Workspace</div>
+        <a class="rail-item" href="/"><strong>Analyze</strong><span>分析股票</span></a>
+        <a class="rail-item" href="/hot-radar"><strong>Hot Radar</strong><span>热榜雷达</span></a>
+        <a class="rail-item" href="/agent-chat"><strong>Agent Chat</strong><span>报告对话</span></a>
+        <a class="rail-item active" href="/reports"><strong>Reports</strong><span>历史报告</span></a>
+        <a class="rail-item" href="/settings"><strong>Settings</strong><span>数据与模型</span></a>
+      </nav>
+
+      <main class="page-main">
+      <div class="toolbar">
+        <div>
+          <h2>历史报告</h2>
+          <p>报告列表展示所有分析任务，完成报告可载入缓存并回到工作台查看。</p>
+        </div>
+        <button id="refresh-reports">刷新列表</button>
+      </div>
+
+      <section class="report-layout">
+        <div class="card">
+          <h3>报告列表</h3>
+          <div class="report-list" id="report-list">
+            <div class="detail-muted">正在读取 /api/analysis/history...</div>
+          </div>
+        </div>
+
+        <aside class="card" id="report-detail">
+          <h3>任务状态</h3>
+          <p class="detail-muted">选择左侧任意历史报告，查看任务参数、缓存键、状态和已保存的报告片段。</p>
+          <div class="detail-grid">
+            <div class="detail-cell"><span>股票代码</span><strong id="detail-code">--</strong></div>
+            <div class="detail-cell"><span>交易日</span><strong id="detail-date">--</strong></div>
+            <div class="detail-cell"><span>状态</span><strong id="detail-status">--</strong></div>
+            <div class="detail-cell"><span>报告片段</span><strong id="detail-sections">--</strong></div>
+            <div class="detail-cell"><span>缓存键</span><strong id="detail-cache">--</strong></div>
+            <div class="detail-cell wide"><span>失败原因</span><strong id="detail-error">--</strong></div>
+          </div>
+        </aside>
+      </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const reportList = document.querySelector("#report-list");
+    const refreshButton = document.querySelector("#refresh-reports");
+    const detailCode = document.querySelector("#detail-code");
+    const detailDate = document.querySelector("#detail-date");
+    const detailStatus = document.querySelector("#detail-status");
+    const detailSections = document.querySelector("#detail-sections");
+    const detailCache = document.querySelector("#detail-cache");
+    const detailError = document.querySelector("#detail-error");
+
+    function statusText(status) {
+      const map = {
+        queued: "排队中",
+        running: "分析中",
+        completed: "已完成",
+        failed: "失败",
+      };
+      return map[status] || status || "未知";
+    }
+
+    function setDetail(item) {
+      const sections = Object.keys(item.report_sections || {});
+      detailCode.textContent = item.request?.ts_code || item.ts_code || "--";
+      detailDate.textContent = item.request?.trade_date || item.trade_date || "--";
+      detailStatus.textContent = statusText(item.status);
+      detailSections.textContent = sections.length ? `${sections.length} 个` : "暂无";
+      detailCache.textContent = item.cache_key || "--";
+      detailError.textContent = item.error || "--";
+    }
+
+    async function restoreReport(item) {
+      if (item.status !== "completed") {
+        if (item.task_id) {
+          await fetch(`/api/analysis/${encodeURIComponent(item.task_id)}`);
+        }
+        window.location.href = "/";
+        return;
+      }
+      const response = await fetch("/api/analysis/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...item.request, force_refresh: false }),
+      });
+      if (!response.ok) {
+        alert("未找到项目内报告缓存，可能该任务尚未完成或缓存已清空。");
+        return;
+      }
+      window.location.href = "/";
+    }
+
+    async function deleteReport(item) {
+      const code = item.request?.ts_code || item.ts_code || "--";
+      const tradeDate = item.request?.trade_date || item.trade_date || "--";
+      const confirmed = window.confirm(
+        `确认删除 ${code} / ${tradeDate} 的历史记录？\n\n这会删除 MySQL 任务记录，以及当前项目 .tradingagents-runtime 下对应的分析缓存和原始报告文件。`
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      const response = await fetch(`/api/analysis/${encodeURIComponent(item.task_id)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const message = response.status === 409
+          ? "任务仍在运行中，暂时不能删除。"
+          : "删除失败，请确认 Web 服务和 MySQL 仍在运行。";
+        alert(message);
+        return;
+      }
+      await loadReports();
+    }
+
+    function reportActionText(item) {
+      if (item.status === "completed") {
+        return "载入报告";
+      }
+      const sections = Object.keys(item.report_sections || {});
+      return sections.length ? "查看片段" : "回到工作台";
+    }
+
+    function renderReports(items) {
+      if (!items.length) {
+        reportList.innerHTML = '<div class="detail-muted">暂无历史分析记录。</div>';
+        return;
+      }
+
+      reportList.innerHTML = "";
+      items.forEach((item) => {
+        const row = document.createElement("article");
+        row.className = "report-item";
+        row.innerHTML = `
+          <header>
+            <div>
+              <strong>${item.request?.ts_code || item.ts_code || "--"}</strong>
+              <small>${item.request?.trade_date || item.trade_date || "--"} · updated ${item.updated_at || "--"}</small>
+            </div>
+            <span class="badge ${item.status || ""}">${statusText(item.status)}</span>
+          </header>
+          <small>模型：${item.request?.llm_provider || "deepseek"} / ${item.request?.quick_model || "deepseek-v4-flash"} · 深度 ${item.request?.research_depth || "--"}</small>
+          <div class="report-actions">
+            <button class="primary" type="button" data-action="restore">${reportActionText(item)}</button>
+            <button class="danger" type="button" data-action="delete">删除记录</button>
+            <a class="button-link" href="/agent-chat?task_id=${encodeURIComponent(item.task_id)}">进入对话</a>
+          </div>
+        `;
+        row.addEventListener("click", () => setDetail(item));
+        row.querySelector('[data-action="restore"]').addEventListener("click", (event) => {
+          event.stopPropagation();
+          restoreReport(item);
+        });
+        row.querySelector('[data-action="delete"]').addEventListener("click", (event) => {
+          event.stopPropagation();
+          deleteReport(item);
+        });
+        reportList.appendChild(row);
+      });
+      setDetail(items[0]);
+    }
+
+    async function loadReports() {
+      refreshButton.disabled = true;
+      refreshButton.textContent = "刷新中";
+      try {
+        const response = await fetch("/api/analysis/history");
+        const body = await response.json();
+        renderReports(body.items || []);
+      } catch (error) {
+        reportList.innerHTML = '<div class="detail-muted">历史报告读取失败，请确认 Web 服务和 MySQL 仍在运行。</div>';
+      } finally {
+        refreshButton.disabled = false;
+        refreshButton.textContent = "刷新列表";
+      }
+    }
+
+    refreshButton.addEventListener("click", loadReports);
+    loadReports();
+  </script>
+</body>
+</html>

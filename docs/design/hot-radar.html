@@ -1,0 +1,1292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hot Radar | TradingAgents</title>
+  <link rel="stylesheet" href="/design/workbench-shell.css">
+  <style>
+    :root {
+      --panel: var(--wb-surface);
+      --soft: var(--wb-surface-soft);
+      --blue-soft: var(--wb-surface-blue);
+      --line: #d8e1ed;
+      --text: #111827;
+      --muted: #64748b;
+      --blue: var(--wb-blue);
+      --green: var(--wb-green);
+      --green-soft: var(--wb-green-soft);
+      --red: var(--wb-red);
+      --red-soft: var(--wb-red-soft);
+      --amber: var(--wb-amber);
+      --radius: var(--wb-radius);
+      --shadow: 0 16px 38px rgba(15, 23, 42, 0.07);
+      --amber-soft: #fff7df;
+    }
+
+    .workspace {
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    /* 顶部一行：基准日 · Top · 紧凑同步按钮 */
+    .hot-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 14px;
+      padding: 8px 12px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      min-width: 0;
+    }
+
+    .hot-toolbar-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 14px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .hot-toolbar-dateline {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .hot-toolbar-kicker {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .hot-toolbar-date {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.03em;
+      color: var(--text);
+      line-height: 1.2;
+    }
+
+    .hot-toolbar-split {
+      width: 1px;
+      height: 18px;
+      background: #d8e1ed;
+      flex-shrink: 0;
+      align-self: center;
+      opacity: 0.95;
+    }
+
+    .hot-toolbar-top-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .hot-toolbar-top-label span {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+    }
+
+    .toolbar-select {
+      height: 30px;
+      min-width: 102px;
+      max-width: 128px;
+      padding: 0 28px 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background-color: var(--panel);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 28px;
+      outline: none;
+      cursor: pointer;
+      box-sizing: border-box;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 12 12'%3E%3Cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.3' d='m3 4 3 3 3-3'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 9px center;
+    }
+
+    .toolbar-select:hover {
+      border-color: #cfd6e4;
+    }
+
+    .toolbar-select:focus-visible {
+      border-color: #93b4ff;
+    }
+
+    .sync-latest-btn {
+      flex-shrink: 0;
+      height: 30px;
+      padding: 0 16px;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+      white-space: nowrap;
+      transition: filter 0.12s ease, transform 0.08s ease;
+    }
+
+    .sync-latest-btn:hover:not(:disabled) {
+      filter: brightness(1.05);
+    }
+
+    .sync-latest-btn:active:not(:disabled) {
+      transform: translateY(0.5px);
+    }
+
+    .sync-latest-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      filter: grayscale(0.15);
+    }
+
+    .candidate-empty {
+      padding: 26px 18px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 22px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .tab-note {
+      display: block;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 650;
+      line-height: 16px;
+    }
+
+    .status {
+      min-width: 58px;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .status.done { color: var(--green); background: var(--green-soft); }
+    .status.pending { color: var(--muted); background: #eef2f7; }
+    .status.running { color: var(--blue); background: var(--blue-soft); }
+
+    .context-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .tag.hot {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: #ffccc7;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+    }
+
+    .candidate-panel {
+      padding: 16px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 24px;
+      font-weight: 850;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-color: #a9c1ff;
+    }
+
+    .candidate-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .candidate-card {
+      display: grid;
+      grid-template-columns: 42px minmax(120px, 1fr) 88px minmax(170px, 1.2fr) minmax(120px, 1fr) minmax(140px, 1fr);
+      gap: 12px;
+      align-items: center;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--soft);
+    }
+
+    .rank {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--panel);
+      color: var(--blue);
+      font-weight: 850;
+      border: 1px solid #c7d7fe;
+    }
+
+    .stock strong, .cell strong {
+      display: block;
+      font-size: 14px;
+      line-height: 18px;
+      font-weight: 850;
+    }
+
+    .stock span, .cell span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+      font-weight: 650;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .rank-reason-line {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 650;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .candidate-card .cell.hot-metrics .muted-line,
+    .candidate-card .rank-reason-line,
+    .candidate-card .verdict-explainer {
+      cursor: help;
+    }
+
+    .candidate-card .stock[title],
+    .candidate-card .cell.context[title],
+    .candidate-card .cell.hot-metrics strong[title] {
+      cursor: help;
+    }
+
+    .red { color: var(--red); font-weight: 850; }
+    .green { color: var(--green); font-weight: 850; }
+
+    .mini-btn {
+      height: 32px;
+      padding: 0 10px;
+      border-radius: var(--radius);
+      border: 1px solid #b9ccff;
+      background: var(--panel);
+      color: var(--blue);
+      font-weight: 850;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .analyze-btn {
+      background: var(--blue);
+      color: #fff;
+      border-color: #1d4ed8;
+    }
+
+    .analyze-btn.analyze-busy {
+      opacity: 0.92;
+      cursor: progress;
+    }
+
+    .decision-chip {
+      display: inline-flex;
+      align-items: center;
+      max-width: 140px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+    }
+
+    .decision-chip--buy {
+      border-color: #fecaca;
+      background: var(--red-soft);
+      color: #b45309;
+    }
+
+    .decision-chip--sell {
+      border-color: #bbf7d0;
+      background: var(--green-soft);
+      color: #166534;
+    }
+
+    .decision-chip--hold {
+      border-color: #c7d2fe;
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .decision-chip--watch {
+      border-color: #e5e7eb;
+      background: #f9fafb;
+      color: #6b7280;
+    }
+
+    .decision-chip--run {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .decision-chip--bad {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+
+    .mini-btn-muted {
+      color: var(--muted);
+      border-color: #e5e7eb;
+      background: var(--panel);
+    }
+
+    .insight-panel {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .insight-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--soft);
+      padding: 13px;
+    }
+
+    .insight-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 20px;
+      font-weight: 850;
+    }
+
+    .insight-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 20px;
+      font-weight: 650;
+      font-size: 12px;
+    }
+
+    .insight-lead {
+      margin: 0 0 10px;
+      font-size: 11px;
+      line-height: 17px;
+      font-weight: 650;
+      color: var(--muted);
+    }
+
+    .insight-tag-cloud {
+      max-height: 200px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-bottom: 2px;
+    }
+
+    .insight-tag-cloud .tag {
+      cursor: help;
+    }
+
+    .insight-tag-cloud .tag .tag-count {
+      margin-left: 5px;
+      font-size: 10px;
+      font-weight: 850;
+      color: inherit;
+      opacity: 0.72;
+      letter-spacing: 0.02em;
+    }
+
+    .insight-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .insight-stat-grid li {
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) - 2px);
+      background: var(--panel);
+      font-size: 11px;
+      font-weight: 750;
+      color: var(--muted);
+      line-height: 17px;
+    }
+
+    .insight-stat-grid strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 18px;
+      font-weight: 850;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .insight-stat-caption {
+      margin: 10px 0 0;
+      font-size: 11px;
+      line-height: 17px;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .batch-meta {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 12px;
+      line-height: 20px;
+      font-weight: 650;
+      color: var(--text);
+    }
+
+    .batch-meta li {
+      margin: 6px 0 0;
+    }
+
+    .batch-meta li:first-child {
+      margin-top: 0;
+      font-weight: 800;
+    }
+
+    .batch-meta .muted {
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .notice {
+      border-color: #f6c768;
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-weight: 750;
+    }
+
+    @media (max-width: 1320px) {
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .insight-panel {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 1080px) {
+      .candidate-card {
+        grid-template-columns: 42px minmax(0, 1fr) 76px;
+      }
+
+      .candidate-card .cell.context,
+      .candidate-card .cell.verdict,
+      .candidate-card .cell.task {
+        grid-column: 2 / -1;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .insight-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .insight-stat-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-leading">
+        <div class="topbar-titles">
+          <h1>A-Share Insight</h1>
+          <p class="topbar-sub">Hot Radar · 同花顺 ths_hot · 行级「分析」可并发新开工作台</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="status-pills">
+          <span class="pill green">自动定时已启用</span>
+          <span class="pill blue">热股 Top 20</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="shell-body">
+      <nav class="rail" aria-label="主导航">
+        <div class="rail-title">Workspace</div>
+        <a class="rail-item" href="/"><strong>Analyze</strong><span>分析股票</span></a>
+        <a class="rail-item active" href="/hot-radar"><strong>Hot Radar</strong><span>热榜雷达</span></a>
+        <a class="rail-item" href="/agent-chat"><strong>Agent Chat</strong><span>报告对话</span></a>
+        <a class="rail-item" href="/reports"><strong>Reports</strong><span>历史报告</span></a>
+        <a class="rail-item" href="/settings"><strong>Settings</strong><span>数据与模型</span></a>
+      </nav>
+
+      <main class="page-main">
+        <div class="workspace">
+      <div class="hot-toolbar" aria-label="热榜参数与同步">
+        <div class="hot-toolbar-meta">
+          <div class="hot-toolbar-dateline">
+            <span class="hot-toolbar-kicker">基准日</span>
+            <time class="hot-toolbar-date" id="current-trade-date" datetime="" title="本机日历今日，作为 ths_hot 与分析的 trade_date">—</time>
+          </div>
+          <span class="hot-toolbar-split" aria-hidden="true"></span>
+          <label class="hot-toolbar-top-label">
+            <span>Top · 可选</span>
+            <select class="toolbar-select" id="top-n" title="热股条数（10–50）">
+              <option value="10">Top 10</option>
+              <option value="20" selected>Top 20</option>
+              <option value="30">Top 30</option>
+              <option value="40">Top 40</option>
+              <option value="50">Top 50</option>
+            </select>
+          </label>
+        </div>
+        <button class="sync-latest-btn" type="button" id="refresh-hot-snapshot">
+          同步榜单
+        </button>
+      </div>
+
+      <section class="content-grid">
+        <div class="panel candidate-panel">
+          <div class="panel-head">
+            <h2>候选标的</h2>
+            <div class="tabs" role="tablist" aria-label="热榜分区">
+              <button class="tab active" type="button" role="tab" aria-selected="true" data-market="热股">
+                热股
+              </button>
+              <button class="tab" type="button" role="tab" aria-selected="false" data-market="ETF">ETF</button>
+              <button class="tab" type="button" role="tab" aria-selected="false" data-market="行业板块">行业</button>
+              <button class="tab" type="button" role="tab" aria-selected="false" data-market="概念板块">概念</button>
+              <button class="tab" type="button" role="tab" aria-selected="false" data-market="__anomaly__">异常</button>
+            </div>
+            <span class="tab-note" id="tab-market-note">
+              各行业、概念与同花顺 ETF 榜来自 ths_hot 独立 market；点顶部「同步榜单」后与热股一并写入。
+            </span>
+          </div>
+
+          <div class="candidate-list" id="candidate-list">
+            <div class="candidate-empty" id="candidate-empty-default">
+              暂无数据：本地无快照时会尝试自动拉取；也可点顶部「同步榜单」，或等待后台写入。
+            </div>
+          </div>
+        </div>
+
+        <aside class="panel insight-panel" id="insight-panel"></aside>
+      </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const topN = document.querySelector("#top-n");
+    const currentTradeDateEl = document.querySelector("#current-trade-date");
+    const refreshSnapshotBtn = document.querySelector("#refresh-hot-snapshot");
+    const topPill = document.querySelector(".status-pills .pill.blue");
+    const candidateList = document.querySelector("#candidate-list");
+    const insightPanel = document.querySelector("#insight-panel");
+    const tabNote = document.querySelector("#tab-market-note");
+    const tabButtons = Array.from(document.querySelectorAll(".tabs .tab"));
+
+    let currentTradeDate = "";
+    let cachedPayload = null;
+    let activeMarketKey = "热股";
+
+    /** ts_code (`XXXXXX.SH` upper) → latest analysis row from `/api/analysis/history` for ``currentTradeDate``. */
+    let analysisHistoryLatestByCode = new Map();
+
+    const EMPTY_HINT = {
+      热股: "暂无热股。无本地快照时会尝试自动拉取；也可点顶部「同步榜单」，或等待定时任务写入。",
+      ETF: "暂无 ETF 热榜条目。可先等自动拉榜或点「同步榜单」（与热股同属一次 ths_hot）。",
+      行业板块: "暂无行业板块热榜条目。可先等自动拉榜或点「同步榜单」。",
+      概念板块: "暂无概念板块热榜条目。可先等自动拉榜或点「同步榜单」。",
+      __anomaly__:
+        "「异常」取自热股中高波动或与理由关键词匹配的条目（同花顺无单独榜单）。需要先有一份热股快照。",
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function taskFor(tasks, tsCode) {
+      return (tasks || []).find((task) => task.ts_code === tsCode) || null;
+    }
+
+    function formatHot(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return value ?? "-";
+      if (numeric >= 10000) return `${(numeric / 10000).toFixed(1)}万`;
+      if (numeric >= 100) return numeric.toFixed(0);
+      return numeric.toFixed(1);
+    }
+
+    function compactText(value, fallback = "") {
+      return String(value ?? fallback)
+        .replaceAll("\\n", " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    /** Native tooltip (title=…); omit when empty. */
+    function titleAttr(fullText) {
+      const raw = compactText(fullText ?? "", "").trim();
+      if (!raw) return "";
+      return ` title="${escapeHtml(raw)}"`;
+    }
+
+    function conceptTags(value) {
+      const source = compactText(value)
+        .replace(/^\[/, "")
+        .replace(/\]$/, "")
+        .replaceAll('"', "")
+        .replaceAll("'", "");
+      return source
+        .split(/[;；,，/、]/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+    }
+
+    function dedupeHotItems(rows) {
+      const seen = new Set();
+      const result = [];
+      for (const row of rows || []) {
+        const key = row.ts_code || row.ts_name || `${row.rank}-${row.rank_time}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(row);
+      }
+      return result;
+    }
+
+    function deriveAnomalyItems(hotRows) {
+      const rows = dedupeHotItems(hotRows || []);
+      return rows.filter((item) => {
+        const pct = Number(item.pct_change);
+        if (Number.isFinite(pct) && Math.abs(pct) >= 6) return true;
+        const rr = compactText(item.rank_reason, "");
+        return /涨停|跌停|异动|拉升|跳水|急跌|冲高回落|振幅|火速/.test(rr);
+      });
+    }
+
+    function rowsForActiveMarket(items) {
+      if (activeMarketKey === "__anomaly__") return deriveAnomalyItems(items?.["热股"] || []);
+      const rows = items?.[activeMarketKey];
+      return Array.isArray(rows) ? dedupeHotItems(rows) : [];
+    }
+
+    function normalizeTsCode(raw) {
+      const value = String(raw ?? "").trim().toUpperCase();
+      if (/^\d{6}\.(SH|SZ|BJ)$/.test(value)) return value;
+      return "";
+    }
+
+    function mapTierToCnLabel(tierEn) {
+      const t = String(tierEn || "").toLowerCase();
+      if (/(^|\b)(buy|overweight|strong\s*buy)(\b|$)/.test(t)) return "增持";
+      if (/(^|\b)(underweight|sell)(\b|$)/.test(t)) return "减仓";
+      if (/(^|\b)(hold|neutral)(\b|$)/.test(t)) return "持有";
+      return "";
+    }
+
+    function extractFiveTierFromReport(text) {
+      const raw = String(text || "");
+      const labelRe =
+        /(?:^|\n)\s*\*{0,2}\s*(?:rating|评级|最终评级)\s*\*{0,2}\s*[：:\-]\s*\*{0,2}\s*\b(Buy|Overweight|Hold|Underweight|Sell)\b/im;
+      const lm = raw.match(labelRe);
+      if (lm) return mapTierToCnLabel(lm[1]);
+
+      const head = raw.split(/\n/).slice(0, 120);
+      const hintRe = /(rating|评级|最终评级|recommendation|action)\s*[：:]/i;
+      const ordered = [...head.filter((ln) => hintRe.test(ln)), ...head.filter((ln) => !hintRe.test(ln))];
+      for (const line of ordered) {
+        const m = line.match(/\b(Buy|Overweight|Hold|Underweight|Sell)\b/i);
+        if (m) return mapTierToCnLabel(m[1]);
+      }
+      return "";
+    }
+
+    function extractDecisionSignal(text, apiDecision) {
+      const normalizeLoose = (value) => {
+        const source = String(value || "").toLowerCase();
+        if (/(strong\s+buy|overweight|buy|增持|买入)/.test(source)) return "增持";
+        if (/(underweight|sell|reduce|trim|减仓|减持|卖出|减配)/.test(source)) return "减仓";
+        if (/(观望|观察)(\b|$)/.test(source) || /^观察$/i.test(String(value || "").trim())) return "观察";
+        if (/(hold|neutral|中性|持有)/.test(source)) return "持有";
+        return "";
+      };
+
+      const fromReport = extractFiveTierFromReport(text);
+      if (fromReport) return fromReport;
+
+      const fromApi = mapTierToCnLabel(apiDecision) || normalizeLoose(apiDecision);
+      if (fromApi) return fromApi;
+
+      const cleaned = String(text || "").replace(/\*\*/g, "");
+      const structuredMatch = cleaned.match(
+        /(?:final\s+transaction\s+proposal|rating|action|recommendation)\s*[:：]\s*([^\n。；;]+)/i,
+      );
+      const structuredSignal = normalizeLoose(structuredMatch?.[1]);
+      if (structuredSignal) return structuredSignal;
+
+      const firstLines = cleaned.split(/\n+/).slice(0, 12).join(" ");
+      return normalizeLoose(firstLines) || "等待报告";
+    }
+
+    function pmDisplayTier(signalRaw) {
+      const s = String(signalRaw || "").trim();
+      if (s === "增持") return { label: "增持", tone: "decision-chip--buy" };
+      if (s === "减仓") return { label: "减持", tone: "decision-chip--sell" };
+      if (s === "持有") return { label: "持有", tone: "decision-chip--hold" };
+      if (s === "观察") return { label: "观察", tone: "decision-chip--watch" };
+      if (s === "等待报告" || !s) return { label: "观察", tone: "decision-chip--watch" };
+      return { label: s, tone: "decision-chip--watch" };
+    }
+
+    function portfolioManagerBrief(row) {
+      if (!row) return { line: "", tone: "decision-chip--watch" };
+      const st = String(row.status || "");
+      if (st === "running" || st === "queued") return { line: "组合经理：分析中", tone: "decision-chip--run" };
+      if (st === "failed") return { line: "组合经理：失败", tone: "decision-chip--bad" };
+
+      let sig = extractDecisionSignal(row.final_decision || "", row.decision || "");
+
+      /* Hot-radar batch link row may only have verdict + API decision. */
+      if (sig === "等待报告") {
+        const v = row.verdict;
+        if (v === "强关注") sig = "增持";
+        else if (v === "放弃") sig = "减仓";
+        else if (v === "观察") sig = "观察";
+      }
+
+      const { label, tone } = pmDisplayTier(sig);
+      return { line: `组合经理：${label}`, tone };
+    }
+
+    async function prefetchAnalysisHistory() {
+      analysisHistoryLatestByCode = new Map();
+      let items = [];
+      try {
+        const res = await fetch("/api/analysis/history?limit=150");
+        if (!res.ok) return;
+        const body = await res.json();
+        items = Array.isArray(body.items) ? body.items : [];
+      } catch (_) {
+        return;
+      }
+      const day = String(currentTradeDate || "").trim();
+      if (!day) return;
+      for (const row of items) {
+        const req = row.request || {};
+        if (String(req.trade_date || "").trim() !== day) continue;
+        const code = normalizeTsCode(req.ts_code || row.ts_code);
+        if (!code) continue;
+        const prev = analysisHistoryLatestByCode.get(code);
+        const tRow = row.updated_at || row.created_at || "";
+        const tPrev = prev ? prev.updated_at || prev.created_at || "" : "";
+        if (!prev || String(tRow) > String(tPrev)) analysisHistoryLatestByCode.set(code, row);
+      }
+    }
+
+    function resolveReportForRow(tsNormalized, linkedTask) {
+      const hist = analysisHistoryLatestByCode.get(tsNormalized);
+      const onlyLink =
+        linkedTask?.analysis_task_id && linkedTask.ts_code === tsNormalized
+          ? {
+              task_id: linkedTask.analysis_task_id,
+              status: linkedTask.status,
+              decision: linkedTask.decision || "",
+              final_decision: "",
+              verdict: linkedTask.verdict,
+            }
+          : null;
+      if (hist?.task_id) return { primary: hist, taskId: hist.task_id };
+      if (onlyLink) return { primary: onlyLink, taskId: onlyLink.task_id };
+      return { primary: null, taskId: null };
+    }
+
+    function candidateEmptyHtml(hint) {
+      return `<div class="candidate-empty">${escapeHtml(hint)}</div>`;
+    }
+
+    function renderCandidatesFromCache() {
+      if (!cachedPayload) {
+        candidateList.innerHTML = candidateEmptyHtml(EMPTY_HINT[activeMarketKey] || EMPTY_HINT.热股);
+        return;
+      }
+      const { items, analysis_tasks: tasks } = cachedPayload;
+      const runStatus = cachedPayload.run?.status;
+      const list = rowsForActiveMarket(items || {});
+
+      if (tabNote) {
+        if (activeMarketKey === "__anomaly__") {
+          tabNote.textContent =
+            "异常：由高波动（|涨跌幅|≥6%）或理由中含涨停/异动等关键词的热股推导，便于快速扫雷；仍以热股快照为前提。";
+        } else {
+          tabNote.textContent =
+            "各行业、概念与同花顺 ETF 榜来自 ths_hot 独立 market；点「同步榜单」会与热股快照一并写入。";
+        }
+      }
+
+      if (!list.length) {
+        const hint =
+          runStatus === "missing"
+            ? "当日尚无已保存快照。通常会尝试自动拉一次；若失败请检查 Token 后点「同步榜单」。"
+            : EMPTY_HINT[activeMarketKey] || EMPTY_HINT.热股;
+        candidateList.innerHTML = candidateEmptyHtml(hint);
+        return;
+      }
+
+      candidateList.innerHTML = list
+        .map((item, index) => {
+          const linkedTask = item.ts_code ? taskFor(tasks, item.ts_code) : null;
+          const concepts = conceptTags(item.concept);
+          const tags = concepts.length
+            ? concepts
+                .map((part, i) => `<span class="tag ${i === 0 ? "hot" : ""}">${escapeHtml(part)}</span>`)
+                .join("")
+            : `<span class="tag">${escapeHtml(item.market || "—")}</span>`;
+          const verdict = linkedTask?.verdict || (linkedTask ? "观察" : "—");
+          const rankTime = compactText(item.rank_time, "");
+          const rankReason = compactText(item.rank_reason, "");
+          const pct = Number(item.pct_change);
+          const pctLabel = Number.isFinite(pct) ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "";
+          const reasonBlock = rankReason
+            ? `<span class="rank-reason-line"${titleAttr(rankReason)}>${escapeHtml(rankReason)}</span>`
+            : "";
+          const tsNormalized = normalizeTsCode(item.ts_code);
+          const canAnalyzeRow =
+            (activeMarketKey === "热股" || activeMarketKey === "__anomaly__") && Boolean(tsNormalized);
+          const rowTradeDate = String(item.trade_date || currentTradeDate || "").trim();
+          const linkNorm = linkedTask?.ts_code ? normalizeTsCode(linkedTask.ts_code) : "";
+          const linkedAligned = linkedTask && linkNorm === tsNormalized ? linkedTask : null;
+          const { primary: reportPrimary, taskId: reportTaskId } = tsNormalized
+            ? resolveReportForRow(tsNormalized, linkedAligned)
+            : { primary: null, taskId: null };
+
+          const actionParts = [];
+          if (canAnalyzeRow) {
+            if (reportTaskId) {
+              const pm = portfolioManagerBrief(reportPrimary);
+              actionParts.push(
+                `<span class="decision-chip ${pm.tone}"${titleAttr(pm.line)}>${escapeHtml(pm.line)}</span>`,
+              );
+              actionParts.push(
+                `<button type="button" class="mini-btn" data-task-id="${escapeHtml(reportTaskId)}">报告</button>`,
+              );
+              actionParts.push(
+                `<button type="button" class="mini-btn mini-btn-muted analyze-btn-secondary" data-analyze-ts="${escapeHtml(tsNormalized)}" data-trade-date="${escapeHtml(rowTradeDate)}">再次分析</button>`,
+              );
+            } else {
+              actionParts.push(
+                `<button type="button" class="mini-btn analyze-btn" data-analyze-ts="${escapeHtml(tsNormalized)}" data-trade-date="${escapeHtml(rowTradeDate)}">分析</button>`,
+              );
+            }
+          }
+          const action =
+            actionParts.length > 0
+              ? `<div class="card-actions">${actionParts.join("")}</div>`
+              : `<span class="status pending task">${escapeHtml("—")}</span>`;
+          const hotPrimary = escapeHtml(formatHot(item.hot));
+          const hotNumericTip =
+            Number.isFinite(Number(item.hot)) && Number(item.hot) >= 100
+              ? `热度指标（原始）：${Number(item.hot).toFixed(2)}`
+              : compactText(item.hot ?? "", "").trim()
+                ? `热度：${compactText(item.hot, "")}`
+                : "";
+          const secondLine = [pctLabel ? `涨跌 ${pctLabel}` : "", rankTime || "", item.current_price ? `价 ${item.current_price}` : ""]
+            .filter(Boolean)
+            .join(" · ");
+          const secondLineTooltip = compactText(secondLine ? `${secondLine}${item.trade_date ? ` · ${item.trade_date}` : ""}` : "");
+          const stockTitle = compactText(`${item.ts_name || ""} ${item.ts_code || ""}`.replace(/\s+/g, " ").trim());
+          const conceptFullTip = compactText(item.concept || "");
+          const verdictDisplay = compactText(
+            linkedTask?.decision || item.rank_reason,
+            activeMarketKey === "热股" || activeMarketKey === "__anomaly__" ? "待分析" : "",
+          );
+          const verdictTipSource = compactText(linkedTask?.decision || "", "");
+          const verdictTip = verdictTipSource.trim() ? verdictTipSource : rankReason || "";
+          return `
+          <article class="candidate-card">
+            <span class="rank">${index + 1}</span>
+            <div class="stock"${titleAttr(stockTitle)}><strong>${escapeHtml(item.ts_name || item.ts_code || "-")}</strong><span>${escapeHtml(
+              item.ts_code || "—",
+            )}</span></div>
+            <div class="cell hot-metrics"><strong${titleAttr(hotNumericTip)}>${hotPrimary}</strong><span class="muted-line"${titleAttr(
+              secondLineTooltip,
+            )}>${escapeHtml(secondLine || "—")}</span>${reasonBlock}</div>
+            <div class="cell context"${titleAttr(conceptFullTip)}>${tags}</div>
+            <div class="cell verdict"><strong class="${
+              String(verdict) === "强关注" ? "red" : ""
+            }">${escapeHtml(String(verdict))}</strong><span class="verdict-explainer"${titleAttr(verdictTip)}>${escapeHtml(verdictDisplay)}</span></div>
+            <div class="cell task">${action}</div>
+          </article>`;
+        })
+        .join("");
+    }
+
+    function applyDashboard(body) {
+      cachedPayload = body;
+      const run = body.run || {};
+      const items = body.items || {};
+      const analysisTasks = body.analysis_tasks || [];
+      renderInsights(items, run, analysisTasks);
+      renderCandidatesFromCache();
+    }
+
+    function runStatusChinese(status) {
+      const s = String(status || "");
+      if (s === "completed") return "已完成批量分析";
+      if (s === "partial_failed") return "批量部分失败";
+      if (s === "hot_only") return "仅热榜快照";
+      if (s === "missing") return "无本地快照";
+      if (s === "failed") return "失败";
+      return s || "未知";
+    }
+
+    function countAnalysisTaskStatuses(tasks) {
+      const out = { completed: 0, running: 0, queued: 0, failed: 0, other: 0 };
+      for (const t of tasks || []) {
+        const st = String(t.status || "");
+        if (Object.prototype.hasOwnProperty.call(out, st)) out[st] += 1;
+        else out.other += 1;
+      }
+      return out;
+    }
+
+    function renderInsights(items, run, analysisTasks) {
+      const hotRows = items?.["热股"] || [];
+      const concepts = new Map();
+      for (const item of hotRows) {
+        for (const name of conceptTags(item.concept)) {
+          if (name) concepts.set(name, (concepts.get(name) || 0) + 1);
+        }
+      }
+      const sortedConcepts = [...concepts.entries()].sort(
+        (a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), "zh-CN"),
+      );
+      const topConceptsHtml = sortedConcepts.length
+        ? sortedConcepts
+            .slice(0, 18)
+            .map(([name, count], index) => {
+              const tip = `${name}（${count} 只热股出现该概念）`;
+              return `<span class="tag ${index === 0 ? "hot" : ""}"${titleAttr(tip)}>${escapeHtml(name)}<span class="tag-count" aria-hidden="true">×${count}</span></span>`;
+            })
+            .join("")
+        : `<span class="tag">${escapeHtml(run?.status === "missing" ? "无快照可聚合" : "当前热股无 concept 文本")}</span>`;
+
+      const hotCount = hotRows.length;
+      const etfCount = (items?.["ETF"] || []).length;
+      const industryCount = (items?.["行业板块"] || []).length;
+      const conceptCount = (items?.["概念板块"] || []).length;
+      const topNStore = Number(run?.top_n || topN.value || 20);
+      const runSt = run?.status || "missing";
+      const taskStats = countAnalysisTaskStatuses(analysisTasks);
+      const taskTotal = (analysisTasks || []).length;
+      const inFlight = taskStats.running + taskStats.queued;
+
+      let batchDetail = "";
+      if (runSt === "missing") {
+        batchDetail =
+          "本地库中尚无该「基准日 + daily」批次。若允许自动补缺，进入本页会尝试拉 ths_hot；也可点顶部「同步榜单」强制写入。";
+      } else if (runSt === "hot_only") {
+        batchDetail = "四市场热榜已持久化。尚未跑热股批量 Agent；列表里「分析 / 报告」为单行工作台任务，与批量无关。";
+      } else if (runSt === "completed") {
+        if (!taskTotal) {
+          batchDetail = "批次状态为完成，但未找到已保存的分析任务行（可能为旧数据或仅快照）。";
+        } else {
+          batchDetail = `热股批量相关任务 ${taskTotal} 条：完成 ${taskStats.completed}，失败 ${taskStats.failed}，队列/运行 ${inFlight}。`;
+        }
+      } else if (runSt === "partial_failed") {
+        const errShort = escapeHtml(compactText(run?.error, "").slice(0, 160));
+        batchDetail = `任务 ${taskTotal} 条：完成 ${taskStats.completed}，失败 ${taskStats.failed}。${errShort ? `错误摘要：${errShort}` : ""}`;
+      } else {
+        batchDetail = escapeHtml(compactText(run?.error, "请查看服务日志或重试同步。").slice(0, 200));
+      }
+
+      const batchTitleLine = `${runStatusChinese(runSt)} · ${compactText(run?.trade_date || currentTradeDate, "—")} · Top ${topNStore}`;
+      const batchTitleSafe = escapeHtml(batchTitleLine);
+
+      insightPanel.innerHTML = `
+        <section class="insight-card">
+          <h3>热点主线</h3>
+          <p class="insight-lead">由当前快照中 <strong>热股</strong> 的「concept」字段拆分去重后统计；数字为出现频次。最多展示 18 项，可滚动。</p>
+          <div class="insight-tag-cloud context-row">${topConceptsHtml}</div>
+        </section>
+        <section class="insight-card">
+          <h3>板块上下文</h3>
+          <p class="insight-lead">与 ths_hot 各 market 拉取后按 <strong>Top ${topNStore}</strong> 截断的条数一致（若源站不足 N 条则更少）。</p>
+          <ul class="insight-stat-grid" aria-label="各市场条数">
+            <li>热股<strong>${hotCount}</strong></li>
+            <li>ETF<strong>${etfCount}</strong></li>
+            <li>行业板块<strong>${industryCount}</strong></li>
+            <li>概念板块<strong>${conceptCount}</strong></li>
+          </ul>
+          <p class="insight-stat-caption">切换上方「热股 / ETF / 行业 / 概念」Tab 可查看对应列表；「异常」由热股派生，不计入此表。</p>
+        </section>
+        <section class="insight-card">
+          <h3>批次摘要</h3>
+          <ul class="batch-meta">
+            <li>${batchTitleSafe}</li>
+            <li class="muted">${batchDetail}</li>
+          </ul>
+        </section>
+        <section class="insight-card notice">
+          <h3>分析入口</h3>
+          <p>热股与「异常」中 A 股代码：无当日分析记录时显示<strong>分析</strong>；若同日已有任务（含手动分析页结果），取<strong>最新一条</strong>展示「组合经理」结论，主按钮为<strong>报告</strong>并附<strong>再次分析</strong>。各行请求互不等候。</p>
+        </section>`;
+    }
+
+    function calendarTodayLocal() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function syncCalendarDateToDom() {
+      currentTradeDate = calendarTodayLocal();
+      currentTradeDateEl.textContent = currentTradeDate;
+      currentTradeDateEl.setAttribute("datetime", currentTradeDate);
+    }
+
+    async function loadDashboardFromStore() {
+      refreshSnapshotBtn.title = "";
+      try {
+        const tradeDate = currentTradeDate;
+        const url = `/api/hot-radar?trade_date=${encodeURIComponent(tradeDate)}&batch_time=daily&top_n=${encodeURIComponent(topN.value)}`;
+        const [, response] = await Promise.all([prefetchAnalysisHistory(), fetch(url)]);
+        const body = await response.json();
+        applyDashboard(body);
+      } catch (_) {
+        cachedPayload = null;
+        candidateList.innerHTML = candidateEmptyHtml("无法连接到 /api/hot-radar。");
+      }
+    }
+
+    async function refreshHotSnapshot() {
+      if (!currentTradeDate) syncCalendarDateToDom();
+      refreshSnapshotBtn.disabled = true;
+      try {
+        const response = await fetch("/api/hot-radar/fetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trade_date: currentTradeDate,
+            batch_time: "daily",
+            top_n: Number(topN.value),
+            force_refresh: true,
+          }),
+        });
+        const errorBody = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(errorBody.detail || `HTTP ${response.status}`);
+        }
+        await prefetchAnalysisHistory();
+        applyDashboard(errorBody);
+      } catch (error) {
+        refreshSnapshotBtn.title = error?.message || "刷新失败";
+      } finally {
+        refreshSnapshotBtn.disabled = false;
+      }
+    }
+
+    /** Fire-and-forget POST; each opens a new tab — does not block other rows when run_inline=false on server. */
+    async function enqueueAnalyzeFromHotRadar(tsCode, tradeDateHint, analyzeButton) {
+      const td = String(tradeDateHint || currentTradeDate || "").trim();
+      const payload = {
+        ts_code: tsCode,
+        trade_date: td,
+        analysts: ["market", "fundamentals", "news"],
+        research_depth: 1,
+        llm_provider: "deepseek",
+        quick_model: "deepseek-v4-flash",
+        deep_model: "deepseek-v4-flash",
+        force_refresh: false,
+      };
+      const label = analyzeButton.textContent;
+      analyzeButton.classList.add("analyze-busy");
+      analyzeButton.textContent = "…";
+      try {
+        const response = await fetch("/api/analysis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const errBody = await response.json().catch(() => ({}));
+        if (!response.ok || !errBody.task_id) {
+          const detail =
+            typeof errBody.detail === "string" ? errBody.detail : errBody.detail ? JSON.stringify(errBody.detail) : response.statusText;
+          throw new Error(detail || "创建分析失败");
+        }
+        window.open(`/?task_id=${encodeURIComponent(errBody.task_id)}`, "_blank", "noopener,noreferrer");
+      } catch (e) {
+        window.alert(`无法启动分析：${e.message || e}`);
+      } finally {
+        analyzeButton.textContent = label;
+        analyzeButton.classList.remove("analyze-busy");
+      }
+    }
+
+    topN.addEventListener("change", () => {
+      topPill.textContent = `热股 Top ${topN.value}`;
+      loadDashboardFromStore();
+    });
+
+    refreshSnapshotBtn.addEventListener("click", refreshHotSnapshot);
+
+    candidateList.addEventListener("click", (event) => {
+      const analyzeHit = event.target.closest("[data-analyze-ts]");
+      if (analyzeHit) {
+        event.preventDefault();
+        enqueueAnalyzeFromHotRadar(
+          analyzeHit.getAttribute("data-analyze-ts"),
+          analyzeHit.getAttribute("data-trade-date"),
+          analyzeHit,
+        );
+        return;
+      }
+      const taskBtn = event.target.closest("[data-task-id]");
+      if (!taskBtn) return;
+      window.open(`/?task_id=${encodeURIComponent(taskBtn.dataset.taskId)}`, "_blank", "noopener,noreferrer");
+    });
+
+    tabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        tabButtons.forEach((item) => {
+          item.classList.remove("active");
+          item.setAttribute("aria-selected", "false");
+        });
+        button.classList.add("active");
+        button.setAttribute("aria-selected", "true");
+        activeMarketKey = button.dataset.market || "热股";
+        renderCandidatesFromCache();
+      });
+    });
+
+    syncCalendarDateToDom();
+    loadDashboardFromStore();
+  </script>
+</body>
+</html>

@@ -1,4 +1,25 @@
 services:
+  tradingagents-mysql:
+    image: mysql:8.4
+    container_name: tradingagents-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: tradingagents_root
+      MYSQL_DATABASE: tradingagents
+      MYSQL_USER: tradingagents
+      MYSQL_PASSWORD: tradingagents
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./.tradingagents-runtime/mysql:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-utradingagents", "-ptradingagents"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   tradingagents:
     build: .
     env_file:

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据与模型 | A-Share Insight</title>
+  <link rel="stylesheet" href="/design/workbench-shell.css">
+  <style>
+    .section-head {
+      margin-bottom: 18px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 28px;
+    }
+
+    .section-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+      min-width: 0;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 24px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .status {
+      margin-top: 18px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      padding: 14px;
+    }
+
+    .status strong {
+      display: block;
+      font-size: 15px;
+      line-height: 22px;
+      overflow-wrap: anywhere;
+    }
+
+    .status span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+      margin-top: 4px;
+    }
+
+    .ok strong { color: var(--green); }
+    .warn strong { color: var(--amber); }
+    .bad strong { color: var(--red); }
+
+    .wide {
+      grid-column: span 2;
+    }
+
+    .source-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .source-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: var(--soft);
+    }
+
+    .source-row span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1080px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .wide {
+        grid-column: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-leading">
+        <div class="topbar-titles">
+          <h1>A-Share Insight</h1>
+          <p class="topbar-sub">数据与模型 · Tushare Pro / AKShare / Tavily / MySQL</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="shell-body">
+      <nav class="rail" aria-label="主导航">
+        <div class="rail-title">Workspace</div>
+        <a class="rail-item" href="/"><strong>Analyze</strong><span>分析股票</span></a>
+        <a class="rail-item" href="/hot-radar"><strong>Hot Radar</strong><span>热榜雷达</span></a>
+        <a class="rail-item" href="/agent-chat"><strong>Agent Chat</strong><span>报告对话</span></a>
+        <a class="rail-item" href="/reports"><strong>Reports</strong><span>历史报告</span></a>
+        <a class="rail-item active" href="/settings"><strong>Settings</strong><span>数据与模型</span></a>
+      </nav>
+
+      <main class="page-main">
+      <div class="section-head">
+        <h2>数据与模型</h2>
+        <p>当前版本先提供只读状态面板，后续再增加 API Key 管理、模型切换和缓存清理。</p>
+      </div>
+
+      <section class="grid" id="health-status">
+        <article class="card">
+          <h3>Tushare Pro</h3>
+          <p>A 股行情、财务、资金流基础数据源。</p>
+          <div class="status" id="tushare-status">
+            <strong>检查中</strong>
+            <span>读取 /api/health</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>MySQL 任务索引</h3>
+          <p>保存历史分析记录、最新分析任务和状态流转。</p>
+          <div class="status" id="mysql-status">
+            <strong>检查中</strong>
+            <span>读取 /api/health</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>DeepSeek</h3>
+          <p>当前默认 quick/deep 模型均使用 deepseek-v4-flash，Agent Chat 专家模式使用 deepseek-v4-pro。</p>
+          <div class="status ok">
+            <strong>默认模型已配置</strong>
+            <span>llm_provider=deepseek · quick_model=deepseek-v4-flash · deep_model=deepseek-v4-flash · expert=deepseek-v4-pro</span>
+          </div>
+        </article>
+
+        <article class="card wide">
+          <h3>新闻源优先级</h3>
+          <p>新闻分析优先使用免费/项目内可控来源，外部搜索作为增强补充。</p>
+          <div class="source-list">
+            <div class="source-row"><strong>AKShare 新闻/公告补充</strong><span>优先使用，失败或限流后降级</span></div>
+            <div class="source-row"><strong>Tavily Search</strong><span>第二层搜索增强，需要 API Key</span></div>
+            <div class="source-row"><strong>Tushare 基本面/资金流说明</strong><span>无新闻时生成降级说明</span></div>
+          </div>
+          <p style="margin-top: 14px;">配置值：akshare,tavily,tushare</p>
+        </article>
+
+        <article class="card">
+          <h3>项目内缓存</h3>
+          <p>报告正文与运行产物放在项目目录，不进入 home，也不会提交到 GitHub。</p>
+          <div class="status ok">
+            <strong>.tradingagents-runtime</strong>
+            <span>cache / reports / memory 均位于当前项目目录。</span>
+          </div>
+        </article>
+      </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const tushareStatus = document.querySelector("#tushare-status");
+    const mysqlStatus = document.querySelector("#mysql-status");
+
+    function setStatus(element, ok, title, detail) {
+      element.className = `status ${ok ? "ok" : "bad"}`;
+      element.innerHTML = `<strong>${title}</strong><span>${detail}</span>`;
+    }
+
+    async function loadHealth() {
+      try {
+        const response = await fetch("/api/health");
+        const health = await response.json();
+        setStatus(
+          tushareStatus,
+          Boolean(health.tushare_configured),
+          health.tushare_configured ? "Token 已配置" : "Token 未配置",
+          "data_source=tushare"
+        );
+        setStatus(
+          mysqlStatus,
+          Boolean(health.analysis_store_available),
+          health.analysis_store_available ? "MySQL 已连接" : "MySQL 不可用",
+          health.analysis_store_error || "analysis_store_configured=" + health.analysis_store_configured
+        );
+      } catch (error) {
+        setStatus(tushareStatus, false, "状态读取失败", "无法访问 /api/health");
+        setStatus(mysqlStatus, false, "状态读取失败", "无法访问 /api/health");
+      }
+    }
+
+    loadHealth();
+  </script>
+</body>
+</html>

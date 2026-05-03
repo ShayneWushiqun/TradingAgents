@@ -6,7 +6,7 @@ from tradingagents.llm_clients.openai_client import NormalizedChatOpenAI
 
 def _deepseek_llm():
     return NormalizedChatOpenAI(
-        model="deepseek-reasoner",
+        model="deepseek-v4-pro",
         base_url="https://api.deepseek.com",
         api_key="test-key",
     )
@@ -17,7 +17,7 @@ def test_deepseek_reasoning_content_is_preserved_from_response():
     llm = _deepseek_llm()
     response = {
         "id": "chatcmpl-test",
-        "model": "deepseek-reasoner",
+        "model": "deepseek-v4-pro",
         "choices": [
             {
                 "finish_reason": "tool_calls",

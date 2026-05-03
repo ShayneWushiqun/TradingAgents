@@ -22,9 +22,42 @@ RATINGS_5_TIER: Tuple[str, ...] = (
 
 _RATING_SET = {r.lower() for r in RATINGS_5_TIER}
 
-# Matches "Rating: X" / "rating - X" / "Rating: **X**" — tolerates markdown
-# bold wrappers and either a colon or hyphen separator.
-_RATING_LABEL_RE = re.compile(r"rating.*?[:\-][\s*]*(\w+)", re.IGNORECASE)
+_TIER_ALT = "|".join(RATINGS_5_TIER)
+
+# Explicit English tier tokens only — avoids ``\w+`` greedily absorbing CJK/markdown around the value,
+# which used to collapse many Chinese-labelled PM outputs to default **Hold**.
+_TIER_BOUNDARY_RE = re.compile(rf"\b(?P<tier>{_TIER_ALT})\b", re.IGNORECASE)
+
+
+def _labeled_rating_patterns() -> tuple[re.Pattern[str], ...]:
+    """Explicit label → tier anchors (rating / Chinese 评级).
+
+    Checked on every non-empty line; first structural match wins in document order.
+    """
+    return (
+        re.compile(
+            rf"(?:\*{{0,2}}\s*)?rating(?:\*{{0,2}}\s*)?[:\-]\s*\*{{0,2}}\s*\b({_TIER_ALT})\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"(?:\*{{0,2}}\s*)?rating(?:\*{{0,2}}\s*)?[:\-]\s*\b({_TIER_ALT})\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"(?:\*{{0,2}}\s*)?(?:评级|最终评级)(?:\*{{0,2}}\s*)?[：:]\s*\*{{0,2}}\s*\b({_TIER_ALT})\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"(?:\*{{0,2}}\s*)?(?:评级|最终评级)(?:\*{{0,2}}\s*)?[：:]\s*\b({_TIER_ALT})\b",
+            re.IGNORECASE,
+        ),
+    )
+
+
+_LABELED_LINE_HINT = re.compile(
+    r"(rating|评级|最终评级|recommendation\s*[:：]|action\s*[:：])",
+    re.IGNORECASE,
+)
 
 
 def parse_rating(text: str, default: str = "Hold") -> str:
@@ -36,12 +69,31 @@ def parse_rating(text: str, default: str = "Hold") -> str:
 
     Returns a Title-cased rating string, or ``default`` if no rating word appears.
     """
-    for line in text.splitlines():
-        m = _RATING_LABEL_RE.search(line)
-        if m and m.group(1).lower() in _RATING_SET:
-            return m.group(1).capitalize()
+    lines = text.splitlines()
+    if not any(l.strip() for l in lines):
+        return default
 
-    for line in text.splitlines():
+    patterns = _labeled_rating_patterns()
+    for line in lines:
+        if not line.strip():
+            continue
+        for pat in patterns:
+            m = pat.search(line)
+            if m and m.group(1).lower() in _RATING_SET:
+                return m.group(1).capitalize()
+
+    head = lines[:200]
+    priority = [ln for ln in head if _LABELED_LINE_HINT.search(ln)]
+    ordered = priority + [ln for ln in head if ln not in priority]
+
+    for line in ordered:
+        if not line.strip():
+            continue
+        m = _TIER_BOUNDARY_RE.search(line)
+        if m and m.group("tier").lower() in _RATING_SET:
+            return m.group("tier").capitalize()
+
+    for line in lines:
         for word in line.lower().split():
             clean = word.strip("*:.,")
             if clean in _RATING_SET:

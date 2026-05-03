@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Chat | TradingAgents</title>
+  <link rel="stylesheet" href="/design/workbench-shell.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: var(--wb-surface);
+      --line: #d8e1ed;
+      --text: #111827;
+      --muted: #64748b;
+      --blue-soft: #eaf1ff;
+      --green: #059669;
+      --radius: var(--wb-radius);
+    }
+
+    .chat-page-main {
+      min-width: 0;
+      padding: clamp(14px, 2.5vw, 22px) clamp(14px, 2.5vw, 26px) 24px;
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    aside, .chat-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+    }
+
+    aside {
+      padding: 18px;
+    }
+
+    .side-title {
+      margin: 0 0 14px;
+      font-size: 17px;
+      font-weight: 850;
+    }
+
+    .task-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 12px;
+      background: #f8fbff;
+      overflow: hidden;
+    }
+
+    .task-card strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .task-card span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .task-id-line {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-all;
+    }
+
+    .history-panel {
+      margin-top: 22px;
+    }
+
+    .history-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .history-head h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .history-head button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .chat-history-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .history-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 9px 10px;
+      background: #f8fbff;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .history-item strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .chat-panel {
+      min-height: calc(100vh - 100px);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    .chat-head {
+      width: 100%;
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 22px 24px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+    }
+
+    .chat-head h2 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 850;
+    }
+
+    .chat-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .status-pill {
+      white-space: nowrap;
+      color: var(--green);
+      background: #e8f8ef;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .messages {
+      padding: 28px 24px;
+      overflow: auto;
+      background: #ffffff;
+    }
+
+    .message {
+      width: fit-content;
+      max-width: 880px;
+      margin: 0 auto 18px;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      line-height: 1.72;
+      font-size: 14px;
+      background: transparent;
+      white-space: pre-wrap;
+    }
+
+    .message.assistant {
+      color: var(--text);
+    }
+
+    .message.user {
+      margin-left: auto;
+      margin-right: calc((100% - min(100%, 880px)) / 2);
+      max-width: min(72%, 640px);
+      color: #ffffff;
+      border-color: var(--blue);
+      background: var(--blue);
+      border-radius: 18px;
+      padding: 10px 14px;
+    }
+
+    .context-stock {
+      margin: 6px 0 0;
+      font-size: 14px;
+      font-weight: 750;
+      color: var(--blue);
+    }
+
+    .message.structured-message {
+      width: 100%;
+      max-width: 880px;
+      white-space: normal;
+    }
+
+    .reply-section {
+      margin-bottom: 14px;
+    }
+
+    .reply-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .reply-section h4 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 850;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .reply-section p,
+    .reply-section li {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.72;
+      color: var(--text);
+    }
+
+    .reply-section ul {
+      margin: 0;
+      padding-left: 1.25em;
+    }
+
+    .reply-section li {
+      margin-bottom: 4px;
+    }
+
+    .agent-trace {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .agent-step {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: #f8fbff;
+    }
+
+    .agent-step.active {
+      color: var(--blue);
+      border-color: #b9ccff;
+      background: var(--blue-soft);
+    }
+
+    .agent-step.done {
+      color: var(--green);
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+
+    .streaming-answer {
+      min-height: 24px;
+    }
+
+    .streaming-cursor {
+      display: inline-block;
+      color: var(--blue);
+      animation: blink 1s steps(2, start) infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .message.assistant-error {
+      border-color: #fecaca;
+      background: #fff1f2;
+      color: #9f1239;
+    }
+
+    .message.assistant-loading {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .composer {
+      width: 100%;
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 14px 16px;
+      border-top: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .composer textarea#chat-question {
+      width: 100%;
+      border: 0;
+      border-radius: 18px;
+      padding: 12px 2px 6px;
+      min-height: 58px;
+      max-height: 160px;
+      resize: vertical;
+      font-size: 14px;
+      font-weight: 650;
+      color: var(--text);
+      font-family: inherit;
+      line-height: 1.55;
+      outline: none;
+      background: transparent;
+    }
+
+    .composer textarea#chat-question::placeholder {
+      color: #98a2b3;
+      font-weight: 650;
+    }
+
+    .composer-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .mode-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .quick-toggle,
+    .smart-search-toggle,
+    .expert-toggle {
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .quick-toggle.active {
+      color: var(--blue);
+      border-color: #b8c9ff;
+      background: var(--blue-soft);
+    }
+
+    .smart-search-toggle.active {
+      color: var(--blue);
+      border-color: #b8c9ff;
+      background: var(--blue-soft);
+    }
+
+    #send-chat {
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--blue);
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 900;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
+    .expert-toggle {
+      min-width: 82px;
+    }
+
+    .expert-toggle[aria-pressed="true"] {
+      color: #7c2d12;
+      border-color: #fed7aa;
+      background: #fff7ed;
+    }
+
+    .quick-toggle:disabled,
+    .smart-search-toggle:disabled,
+    #send-chat:disabled,
+    #send-chat[aria-busy="true"],
+    .expert-toggle:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    @media (max-width: 900px) {
+      .chat-page-main {
+        padding: 14px 14px 28px;
+        grid-template-columns: 1fr;
+      }
+      .chat-head,
+      .composer {
+        max-width: none;
+      }
+      .composer-toolbar {
+        align-items: flex-end;
+      }
+      .mode-actions {
+        flex-wrap: wrap;
+      }
+      .message { max-width: 92%; }
+    }
+  </style>
+</head>
+<body class="chatgpt-layout">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-leading">
+        <div class="topbar-titles">
+          <h1>A-Share Insight</h1>
+          <p class="topbar-sub">Agent Chat · TradingAgents 报告上下文</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="shell-body">
+      <nav class="rail" aria-label="主导航">
+        <div class="rail-title">Workspace</div>
+        <a class="rail-item" href="/"><strong>Analyze</strong><span>分析股票</span></a>
+        <a class="rail-item" href="/hot-radar"><strong>Hot Radar</strong><span>热榜雷达</span></a>
+        <a class="rail-item active" href="/agent-chat"><strong>Agent Chat</strong><span>报告对话</span></a>
+        <a class="rail-item" href="/reports"><strong>Reports</strong><span>历史报告</span></a>
+        <a class="rail-item" href="/settings"><strong>Settings</strong><span>数据与模型</span></a>
+      </nav>
+
+      <main class="page-main chat-page-main">
+    <aside>
+      <h2 class="side-title">当前分析任务</h2>
+      <div class="task-card">
+        <strong id="task-code">未选择任务</strong>
+        <span id="task-meta">从工作台点击开启 Agent 对话，会自动带入 task_id。</span>
+      </div>
+      <div class="history-panel">
+        <div class="history-head">
+          <h3>历史消息</h3>
+          <button type="button" id="clear-chat-history">清空</button>
+        </div>
+        <div class="chat-history-list" id="chat-history-list" aria-live="polite">
+          <div class="history-item">当前任务暂无对话。</div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="chat-panel chat-shell" aria-label="当前股票 Agent LLM 聊天框">
+      <div class="chat-head">
+        <div>
+          <h2>基于当前报告继续分析</h2>
+          <p id="context-line">正在读取 task_id 和分析报告状态。</p>
+          <p class="context-stock" id="context-stock" aria-live="polite">当前标的：— · 交易日：—</p>
+        </div>
+        <span class="status-pill" id="task-status">等待上下文</span>
+      </div>
+
+      <div class="messages" id="chat-main">
+        <div class="message assistant">
+          进入 Agent Chat 后，我会使用当前 TradingAgents 分析报告作为上下文。你可以追问风险、预期、估值或交易计划。
+        </div>
+      </div>
+
+      <div class="composer">
+        <textarea id="chat-question" rows="2" placeholder="继续追问当前股票的风险、预期或交易计划...（Enter 发送，Shift+Enter 换行）" aria-label="Agent 聊天输入"></textarea>
+        <div class="composer-toolbar">
+          <div class="mode-actions" aria-label="对话模式">
+            <button class="quick-toggle active" type="button" id="quick-mode-toggle" aria-pressed="true">
+              快速模式
+            </button>
+            <button class="expert-toggle" type="button" id="expert-mode-toggle" aria-pressed="false" title="开启后使用更深度的模型回答">
+              专家模式
+            </button>
+            <button class="smart-search-toggle" type="button" id="smart-search-toggle" aria-pressed="false" data-skill-target="external_data_tools" title="开启后使用 Tushare、腾讯财经、AKShare、Tavily 综合搜索">
+              智能搜索
+            </button>
+          </div>
+          <button type="button" id="send-chat" aria-label="发送">↑</button>
+        </div>
+      </div>
+    </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const CHAT_HISTORY_STORAGE_KEY = "a-share-agent-chat-history-v1";
+    const CHAT_HISTORY_MAX_MESSAGES = 50;
+    let taskId = params.get("task_id");
+
+    const chatMain = document.querySelector("#chat-main");
+    const chatInput = document.querySelector("#chat-question");
+    const sendChat = document.querySelector("#send-chat");
+    const expertModeToggle = document.querySelector("#expert-mode-toggle");
+    const quickModeToggle = document.querySelector("#quick-mode-toggle");
+    const smartSearchToggle = document.querySelector("#smart-search-toggle");
+    const taskCode = document.querySelector("#task-code");
+    const taskMeta = document.querySelector("#task-meta");
+    const taskStatus = document.querySelector("#task-status");
+    const contextLine = document.querySelector("#context-line");
+    const contextStock = document.querySelector("#context-stock");
+    const chatHistoryList = document.querySelector("#chat-history-list");
+    const clearChatHistory = document.querySelector("#clear-chat-history");
+    let expertMode = false;
+    let smartSearch = false;
+    let chatHistory = [];
+
+    function currentHistoryKey() {
+      return `${CHAT_HISTORY_STORAGE_KEY}:${taskId || "latest"}`;
+    }
+
+    function loadConversationHistory() {
+      try {
+        const raw = localStorage.getItem(currentHistoryKey());
+        chatHistory = raw ? JSON.parse(raw) : [];
+      } catch (error) {
+        chatHistory = [];
+      }
+      if (!Array.isArray(chatHistory)) {
+        chatHistory = [];
+      }
+      chatHistory = chatHistory
+        .filter((item) => item && item.role && item.content)
+        .slice(-CHAT_HISTORY_MAX_MESSAGES);
+      renderChatHistoryList();
+      restoreConversationMessages();
+      return chatHistory;
+    }
+
+    function saveConversationHistory() {
+      chatHistory = chatHistory.slice(-CHAT_HISTORY_MAX_MESSAGES);
+      localStorage.setItem(currentHistoryKey(), JSON.stringify(chatHistory));
+      renderChatHistoryList();
+    }
+
+    function renderChatHistoryList() {
+      if (!chatHistoryList) return;
+      chatHistoryList.textContent = "";
+      const recent = chatHistory.slice(-8).reverse();
+      if (!recent.length) {
+        const empty = document.createElement("div");
+        empty.className = "history-item";
+        empty.textContent = "当前任务暂无对话。";
+        chatHistoryList.appendChild(empty);
+        return;
+      }
+      recent.forEach((item) => {
+        const node = document.createElement("div");
+        node.className = "history-item";
+        const role = document.createElement("strong");
+        role.textContent = item.role === "user" ? "你" : "Agent";
+        const content = document.createElement("span");
+        content.textContent = item.content.length > 80
+          ? item.content.slice(0, 79) + "..."
+          : item.content;
+        node.appendChild(role);
+        node.appendChild(content);
+        chatHistoryList.appendChild(node);
+      });
+    }
+
+    function restoreConversationMessages() {
+      chatMain
+        .querySelectorAll("[data-history-restored='true']")
+        .forEach((node) => node.remove());
+      chatHistory.forEach((item) => {
+        if (item.role === "user") {
+          const message = appendUserMessageBubble(item.content);
+          message.dataset.historyRestored = "true";
+        } else {
+          const message = appendStructuredAssistantMessage(item.sections, item.content);
+          message.dataset.historyRestored = "true";
+        }
+      });
+    }
+
+    function conversationHistoryForRequest() {
+      return chatHistory.map((item) => ({
+        role: item.role,
+        content: item.content,
+      }));
+    }
+
+    function recordChatHistory(item) {
+      chatHistory.push(item);
+      saveConversationHistory();
+    }
+
+    function recordAssistantPayload(payload) {
+      const sections = payload && payload.sections ? payload.sections : null;
+      const content =
+        (sections && sections.conclusion) ||
+        (payload && payload.reply) ||
+        "Agent 已完成回答。";
+      recordChatHistory({ role: "assistant", content, sections });
+    }
+
+    function updateContextStock(tsCode, tradeDate) {
+      if (!contextStock) return;
+      const code = tsCode && String(tsCode).trim() ? tsCode : "—";
+      const day = tradeDate && String(tradeDate).trim() ? tradeDate : "—";
+      contextStock.textContent = `当前标的：${code} · 交易日：${day}`;
+    }
+
+    function renderTaskMeta(tradeDate, status, currentTaskId) {
+      taskMeta.textContent = "";
+      taskMeta.appendChild(
+        document.createTextNode(`${tradeDate} · ${status}`)
+      );
+      const taskIdLine = document.createElement("span");
+      taskIdLine.className = "task-id-line";
+      taskIdLine.textContent = `task_id=${currentTaskId}`;
+      taskMeta.appendChild(taskIdLine);
+    }
+
+    function hydrateTaskPanel(body) {
+      taskCode.textContent = body.request.ts_code;
+      renderTaskMeta(body.request.trade_date, body.status, body.task_id);
+      taskStatus.textContent = body.status === "completed" ? "报告已就绪" : "报告未完成";
+      contextLine.textContent =
+        "已读取当前分析任务；如果报告已完成，问答会围绕该任务的 TradingAgents 结果展开。";
+      updateContextStock(body.request.ts_code, body.request.trade_date);
+    }
+
+    async function ensureChatContext() {
+      if (taskId) return true;
+      try {
+        const latestResponse = await fetch("/api/analysis/latest");
+        if (!latestResponse.ok) return false;
+        const latest = await latestResponse.json();
+        taskId = latest.task_id;
+        if (latest.request) {
+          taskCode.textContent = latest.request.ts_code;
+          renderTaskMeta(latest.request.trade_date, latest.status, latest.task_id);
+          taskStatus.textContent = latest.status === "completed" ? "报告已就绪" : "报告未完成";
+          contextLine.textContent =
+            "已通过 latest analysis 绑定上下文；后端也会在 task_id 为空时自动使用该任务。";
+          updateContextStock(latest.request.ts_code, latest.request.trade_date);
+          loadConversationHistory();
+        }
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    async function loadTaskContext() {
+      if (!taskId) {
+        const ok = await ensureChatContext();
+        if (!ok) {
+          contextLine.textContent = "当前没有可用分析任务，请先回到工作台完成一次分析。";
+          updateContextStock("", "");
+          return;
+        }
+      }
+      try {
+        const response = await fetch(`/api/analysis/${encodeURIComponent(taskId)}`);
+        if (!response.ok) throw new Error("task not found");
+        const body = await response.json();
+        hydrateTaskPanel(body);
+        loadConversationHistory();
+      } catch (error) {
+        taskStatus.textContent = "上下文缺失";
+        contextLine.textContent = "没有找到对应分析任务，请回到工作台重新打开 Agent 对话。";
+        updateContextStock("", "");
+      }
+    }
+
+    function appendUserMessageBubble(text) {
+      const message = document.createElement("div");
+      message.className = "message user";
+      message.textContent = text;
+      chatMain.appendChild(message);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return message;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function buildStructuredAssistantHtml(sections) {
+      const listHtml = (items) =>
+        `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+      const compressionNote = sections.context_compressed
+        ? '<div class="reply-section" data-reply-block="context_compressed"><h4>上下文</h4><p>历史对话较长，已自动压缩早期内容并保留最近消息。</p></div>'
+        : "";
+
+      return (
+        `<div class="reply-section" data-reply-block="conclusion"><h4>结论</h4><p>${escapeHtml(sections.conclusion || "")}</p></div>` +
+        `<div class="reply-section" data-reply-block="evidence"><h4>证据</h4>${listHtml(
+          sections.evidence && sections.evidence.length ? sections.evidence : ["暂无证据。"]
+        )}</div>` +
+        `<div class="reply-section" data-reply-block="data_sources"><h4>数据来源</h4>${listHtml(
+          sections.data_sources && sections.data_sources.length
+            ? sections.data_sources
+            : ["report_context"]
+        )}</div>` +
+        `<div class="reply-section" data-reply-block="limitations"><h4>限制说明</h4>${listHtml(
+          sections.limitations && sections.limitations.length
+            ? sections.limitations
+            : ["无额外限制。"]
+        )}</div>` +
+        compressionNote
+      );
+    }
+
+    function appendStructuredAssistantMessage(sections, fallbackText) {
+      const message = document.createElement("div");
+      message.className = "message assistant structured-message";
+
+      if (
+        sections &&
+        typeof sections.conclusion === "string" &&
+        Array.isArray(sections.evidence)
+      ) {
+        message.innerHTML = buildStructuredAssistantHtml(sections);
+      } else if (fallbackText) {
+        message.classList.add("fallback-plain");
+        message.textContent = fallbackText;
+      } else {
+        message.textContent = "后端没有返回有效回答。";
+      }
+
+      chatMain.appendChild(message);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return message;
+    }
+
+    function appendAgentTrace(message) {
+      const trace = document.createElement("div");
+      trace.className = "agent-trace";
+      trace.setAttribute("data-agent-trace", "true");
+      message.appendChild(trace);
+      return trace;
+    }
+
+    function appendAgentTraceStep(message, text, state = "active") {
+      const trace =
+        message.querySelector("[data-agent-trace]") || appendAgentTrace(message);
+      trace
+        .querySelectorAll(".agent-step.active")
+        .forEach((step) => step.classList.replace("active", "done"));
+      const step = document.createElement("span");
+      step.className = `agent-step ${state}`;
+      step.textContent = text;
+      trace.appendChild(step);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return step;
+    }
+
+    function appendAssistantStreamingMessage() {
+      const message = document.createElement("div");
+      message.className = "message assistant structured-message streaming-message";
+      appendAgentTrace(message);
+      appendAgentTraceStep(message, "正在选择工具", "active");
+      const body = document.createElement("div");
+      body.className = "reply-section";
+      body.setAttribute("data-reply-block", "streaming-conclusion");
+      body.innerHTML =
+        '<h4>生成中</h4><p class="streaming-answer"><span class="streaming-cursor">▍</span></p>';
+      message.appendChild(body);
+      chatMain.appendChild(message);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return message;
+    }
+
+    function appendAssistantDelta(message, delta) {
+      const target = message.querySelector(".streaming-answer");
+      if (!target) return;
+      const cursor = target.querySelector(".streaming-cursor");
+      if (cursor) cursor.remove();
+      target.textContent += delta;
+      const nextCursor = document.createElement("span");
+      nextCursor.className = "streaming-cursor";
+      nextCursor.textContent = "▍";
+      target.appendChild(nextCursor);
+      chatMain.scrollTop = chatMain.scrollHeight;
+    }
+
+    function finalizeStreamingAssistantMessage(message, payload) {
+      const traceHtml = message.querySelector("[data-agent-trace]")?.outerHTML || "";
+      if (payload && payload.sections) {
+        message.innerHTML = traceHtml + buildStructuredAssistantHtml(payload.sections);
+      } else {
+        const current = message.querySelector(".streaming-answer")?.textContent || "";
+        message.innerHTML =
+          traceHtml +
+          `<div class="reply-section" data-reply-block="conclusion"><h4>结论</h4><p>${escapeHtml(current)}</p></div>`;
+      }
+      chatMain.scrollTop = chatMain.scrollHeight;
+    }
+
+    function appendAssistantLoadingBubble() {
+      const message = document.createElement("div");
+      message.className = "message assistant assistant-loading";
+      message.dataset.role = "pending-reply";
+      message.textContent = "正在生成结构化回答...";
+      chatMain.appendChild(message);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return message;
+    }
+
+    function appendAssistantErrorBubble(text) {
+      const message = document.createElement("div");
+      message.className = "message assistant assistant-error structured-message";
+      message.innerHTML =
+        `<div class="reply-section" data-reply-block="error"><h4>出错</h4><p>${text}</p></div>`;
+      chatMain.appendChild(message);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return message;
+    }
+
+    function handleAgentEvent(eventName, data, message) {
+      if (eventName === "tool_started") {
+        appendAgentTraceStep(message, `工具选择：${data.skill || "report_context"}`, "active");
+        return null;
+      }
+      if (eventName === "tool_completed") {
+        const sources = Array.isArray(data.data_sources)
+          ? data.data_sources.join(" / ")
+          : data.skill || "report_context";
+        appendAgentTraceStep(message, `读取数据：${sources}`, "active");
+        return null;
+      }
+      if (eventName === "llm_started") {
+        appendAgentTraceStep(message, `调用模型：${data.llm_model || "deepseek-v4-flash"}`, "active");
+        return null;
+      }
+      if (eventName === "answer_delta") {
+        appendAssistantDelta(message, data.delta || "");
+        return null;
+      }
+      if (eventName === "completed") {
+        appendAgentTraceStep(message, "回答完成", "done");
+        finalizeStreamingAssistantMessage(message, data);
+        return data;
+      }
+      return null;
+    }
+
+    async function readAgentStream(response, message) {
+      if (!response.body) {
+        throw new Error("当前浏览器不支持流式响应。");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let finalPayload = null;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
+
+        for (const frame of frames) {
+          const lines = frame.split("\n");
+          const eventLine = lines.find((line) => line.startsWith("event:"));
+          const dataLines = lines.filter((line) => line.startsWith("data:"));
+          const eventName = eventLine ? eventLine.slice(6).trim() : "message";
+          const dataText = dataLines.map((line) => line.slice(5).trim()).join("\n");
+          const data = dataText ? JSON.parse(dataText) : {};
+          finalPayload = handleAgentEvent(eventName, data, message) || finalPayload;
+        }
+      }
+
+      return finalPayload;
+    }
+
+    async function fallbackJsonChat(trimmed, message) {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: taskId || "",
+          message: trimmed,
+          expert_mode: expertMode,
+          smart_search: smartSearch,
+          conversation_history: conversationHistoryForRequest(),
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
+      finalizeStreamingAssistantMessage(message, body);
+      return body;
+    }
+
+    function setSendLoading(isLoading) {
+      sendChat.disabled = isLoading;
+      sendChat.setAttribute("aria-busy", isLoading ? "true" : "false");
+      sendChat.classList.toggle("send-chat-loading", isLoading);
+      if (expertModeToggle) {
+        expertModeToggle.disabled = isLoading;
+      }
+      if (quickModeToggle) {
+        quickModeToggle.disabled = isLoading;
+      }
+      if (smartSearchToggle) {
+        smartSearchToggle.disabled = isLoading;
+      }
+    }
+
+    function updateExpertModeToggle() {
+      if (!expertModeToggle) return;
+      expertModeToggle.setAttribute("aria-pressed", expertMode ? "true" : "false");
+      expertModeToggle.classList.toggle("active", expertMode);
+      if (quickModeToggle) {
+        quickModeToggle.classList.toggle("active", !expertMode);
+        quickModeToggle.setAttribute("aria-pressed", expertMode ? "false" : "true");
+      }
+      expertModeToggle.textContent = "专家模式";
+    }
+
+    function updateSmartSearchToggle() {
+      if (!smartSearchToggle) return;
+      smartSearchToggle.setAttribute("aria-pressed", smartSearch ? "true" : "false");
+      smartSearchToggle.classList.toggle("active", smartSearch);
+    }
+
+    async function submitAgentChat() {
+      const raw = chatInput.value;
+      const trimmed = raw.trim();
+      if (!trimmed || sendChat.disabled) return;
+
+      appendUserMessageBubble(raw.replace(/^\s+|\s+$/g, ""));
+      const outgoingHistory = conversationHistoryForRequest();
+      recordChatHistory({ role: "user", content: trimmed });
+      const streamingMessage = appendAssistantStreamingMessage();
+      chatInput.value = "";
+      setSendLoading(true);
+
+      await ensureChatContext();
+
+      try {
+        const response = await fetch("/api/chat/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: taskId || "",
+            message: trimmed,
+            expert_mode: expertMode,
+            smart_search: smartSearch,
+            conversation_history: outgoingHistory,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const body = await readAgentStream(response, streamingMessage);
+        if (body && body.task_id) taskId = body.task_id;
+        if (body && body.ts_code) updateContextStock(body.ts_code, body.trade_date || "");
+        if (body) recordAssistantPayload(body);
+      } catch (error) {
+        try {
+          const body = await fallbackJsonChat(trimmed, streamingMessage);
+          if (body.task_id) taskId = body.task_id;
+          if (body.ts_code) updateContextStock(body.ts_code, body.trade_date || "");
+          recordAssistantPayload(body);
+        } catch (fallbackError) {
+          streamingMessage.remove();
+          const detail = fallbackError && fallbackError.message ? fallbackError.message : "unknown";
+          appendAssistantErrorBubble(`请求失败：${detail}`);
+        }
+      } finally {
+        setSendLoading(false);
+      }
+    }
+
+    sendChat.addEventListener("click", () => {
+      submitAgentChat();
+    });
+
+    if (expertModeToggle) {
+      expertModeToggle.addEventListener("click", () => {
+        expertMode = true;
+        updateExpertModeToggle();
+      });
+      updateExpertModeToggle();
+    }
+
+    if (quickModeToggle) {
+      quickModeToggle.addEventListener("click", () => {
+        expertMode = false;
+        updateExpertModeToggle();
+      });
+    }
+
+    if (smartSearchToggle) {
+      smartSearchToggle.addEventListener("click", () => {
+        smartSearch = !smartSearch;
+        updateSmartSearchToggle();
+      });
+      updateSmartSearchToggle();
+    }
+
+    if (clearChatHistory) {
+      clearChatHistory.addEventListener("click", () => {
+        chatHistory = [];
+        localStorage.removeItem(currentHistoryKey());
+        chatMain
+          .querySelectorAll("[data-history-restored='true']")
+          .forEach((node) => node.remove());
+        renderChatHistoryList();
+      });
+    }
+
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        submitAgentChat();
+      }
+    });
+
+    loadTaskContext();
+  </script>
+</body>
+</html>
