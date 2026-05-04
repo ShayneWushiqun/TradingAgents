@@ -179,9 +179,7 @@ def test_queue_status_excludes_completed_reports_from_current_queue():
     }
 
 
-def test_clear_completed_history_purges_store_registry_and_cache(tmp_path):
-    from tradingagents.web.analysis_cache import AnalysisCache
-
+def test_clear_completed_history_soft_deletes_store_and_keeps_cache_files(tmp_path):
     store = AnalysisStore(f"sqlite:///{tmp_path / 'analysis.db'}")
     cache = AnalysisCache(cache_dir=tmp_path / "cache")
     service = AnalysisService(
@@ -206,6 +204,8 @@ def test_clear_completed_history_purges_store_registry_and_cache(tmp_path):
         decision="Hold",
         report_sections={"final_trade_decision": "Rating: Hold"},
     )
+    cache_paths = cache._paths_for(completed.request)
+    assert any(path.exists() for path in cache_paths)
 
     """Running tasks must survive a clear-history call."""
     running = service.registry.create(_request("600003.SH", "deepseek-v4-pro"))
@@ -215,8 +215,11 @@ def test_clear_completed_history_purges_store_registry_and_cache(tmp_path):
     result = service.clear_completed_history()
 
     assert result["deleted_tasks"] >= 1
-    assert result["deleted_cache_files"] >= 1
+    assert result["deleted_cache_files"] == 0
+    assert result["deleted_runtime_files"] == 0
     assert service.history(limit=20, status="completed") == []
+    assert any(path.exists() for path in cache_paths)
+    assert store.get_task(completed.task_id, include_deleted=True)["deleted_at"]
     assert service.get_task(running.task_id) is not None
     assert service.get_task(running.task_id).status == "running"
 

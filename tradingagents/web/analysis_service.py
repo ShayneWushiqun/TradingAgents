@@ -205,21 +205,23 @@ class AnalysisService:
                 task = self._restore_stored_task(stored)
                 if task is not None:
                     return task
-        cached = self.cache.latest()
-        if cached is None:
-            return None
-        request = AnalysisRequest(**cached["request"])
-        task = self.registry.create(request)
-        self.registry.complete_from_cache(task.task_id, cached)
-        self._sync_store(task)
-        return task
+        if self.store is None:
+            cached = self.cache.latest()
+            if cached is None:
+                return None
+            request = AnalysisRequest(**cached["request"])
+            task = self.registry.create(request)
+            self.registry.complete_from_cache(task.task_id, cached)
+            self._sync_store(task)
+            return task
+        return None
 
     def get_task(self, task_id: str) -> AnalysisTask | None:
         task = self.registry.get(task_id)
         if task is not None:
             self._repair_task_status(task)
             return task
-        if isinstance(task_id, str) and task_id.startswith("cache:"):
+        if self.store is None and isinstance(task_id, str) and task_id.startswith("cache:"):
             cache_key = task_id[len("cache:") :]
             data = self.cache.load_by_key(cache_key)
             if data is None:
@@ -248,16 +250,10 @@ class AnalysisService:
         return self._restore_stored_task(stored)
 
     def clear_completed_history(self) -> dict:
-        """One-shot purge of all completed analyses (Reports「一键清空」).
+        """Hide completed analyses from Reports without deleting report files.
 
-        Removes:
-          1. ``status='completed'`` rows in the persistent store (if configured).
-          2. In-memory registry entries with ``status='completed'``.
-          3. Every cache JSON in :attr:`AnalysisCache.cache_dirs` (the only durable
-             evidence when no store is configured).
-          4. Best-effort runtime report files / checkpoints derived from each
-             completed entry's ``request``.
-
+        Persistent rows are soft-deleted so the DB remains auditable. In-memory
+        completed tasks are removed only from the visible runtime registry.
         Running / queued / stopping / failed / stopped tasks are not touched.
 
         """
@@ -266,44 +262,12 @@ class AnalysisService:
         deleted_cache_files: int = 0
         deleted_runtime_files: int = 0
 
-        completed_requests: list[AnalysisRequest] = []
-
         if self.store is not None:
-            for raw in self.store.history(limit=200, status="completed"):
-                req_dict = raw.get("request") or {}
-                try:
-                    completed_requests.append(AnalysisRequest(**req_dict))
-                except Exception:
-                    pass
-                tid = str(raw.get("task_id") or "")
-                if tid and self.store.delete_task(tid):
-                    deleted_tasks += 1
+            deleted_tasks += self.store.soft_delete_completed()
 
         for task in self.registry.list_recent(200, status="completed"):
-            completed_requests.append(task.request)
             if self.registry.delete(task.task_id) is not None:
                 deleted_tasks += 1
-
-        for cache_dir in self.cache.cache_dirs:
-            if not cache_dir.exists():
-                continue
-            for path in cache_dir.iterdir():
-                if path.suffix != ".json":
-                    continue
-                try:
-                    path.unlink()
-                    deleted_cache_files += 1
-                except OSError:
-                    continue
-
-        seen_keys: set[str] = set()
-        for request in completed_requests:
-            key = self.cache.key_for(request)
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            deleted_runtime_files += len(self._delete_runtime_report_files(request))
-            self._clear_runtime_checkpoint(request)
 
         return {
             "deleted_tasks": deleted_tasks,
@@ -322,6 +286,20 @@ class AnalysisService:
                 "status": task.status,
                 "deleted_files": 0,
                 "blocked": True,
+            }
+
+        if task.status == "completed":
+            store_deleted = False
+            if self.store is not None:
+                store_deleted = self.store.soft_delete_task(task_id)
+            memory_deleted = self.registry.delete(task_id) is not None
+            return {
+                "deleted": bool(store_deleted or memory_deleted),
+                "task_id": task_id,
+                "status": task.status,
+                "deleted_files": 0,
+                "blocked": False,
+                "soft_deleted": True,
             }
 
         deleted_files = self.cache.delete(task.request)
@@ -482,7 +460,7 @@ class AnalysisService:
                 )
             )
 
-        if not wanted or wanted == "completed":
+        if self.store is None and (not wanted or wanted == "completed"):
             for cache_key, data, mtime in self.cache.iter_completed():
                 if cache_key in seen_keys:
                     continue

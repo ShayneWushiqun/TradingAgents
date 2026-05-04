@@ -16,10 +16,84 @@ def test_health_reports_tushare_configuration(monkeypatch):
         "ok": True,
         "data_source": "tushare",
         "tushare_configured": True,
+        "auth_enabled": False,
         "analysis_store_configured": False,
         "analysis_store_available": False,
         "analysis_store_error": "",
+        "hot_radar_store_configured": False,
+        "hot_radar_store_available": False,
+        "hot_radar_store_error": "",
+        "database_required": False,
     }
+
+
+def test_auth_password_protects_pages_and_apis():
+    client = TestClient(create_app(auth_password="secret"))
+
+    page = client.get("/", follow_redirects=False)
+    api = client.get("/api/analysis/history")
+    login_page = client.get("/login")
+
+    assert page.status_code == 303
+    assert page.headers["location"].startswith("/login")
+    assert api.status_code == 401
+    assert api.json()["detail"] == "not authenticated"
+    assert login_page.status_code == 200
+    assert "A-Share Insight" in login_page.text
+
+
+def test_login_sets_eight_hour_cookie_and_allows_access():
+    client = TestClient(create_app(auth_password="secret", auth_username="admin"))
+
+    failed = client.post("/api/login", json={"username": "admin", "password": "bad"})
+    success = client.post("/api/login", json={"username": "admin", "password": "secret"})
+    page = client.get("/")
+
+    assert failed.status_code == 401
+    assert success.status_code == 200
+    assert success.json()["ok"] is True
+    assert "Max-Age=28800" in success.headers["set-cookie"]
+    assert page.status_code == 200
+    assert "A-Share Insight" in page.text
+
+
+def test_logout_clears_auth_cookie():
+    client = TestClient(create_app(auth_password="secret"))
+    client.post("/api/login", json={"password": "secret"})
+
+    response = client.post("/api/logout")
+    blocked = client.get("/api/analysis/history")
+
+    assert response.status_code == 200
+    assert "Max-Age=0" in response.headers["set-cookie"]
+    assert blocked.status_code == 401
+
+
+def test_create_app_can_require_database_url_for_runtime():
+    try:
+        create_app(database_url="", require_database=True)
+    except RuntimeError as exc:
+        assert "TRADINGAGENTS_DB_URL" in str(exc)
+    else:  # pragma: no cover - defensive guard
+        raise AssertionError("create_app should fail fast when the runtime DB URL is missing")
+
+
+def test_health_reports_mysql_backed_stores_when_database_url_is_set(tmp_path):
+    client = TestClient(
+        create_app(
+            database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
+            runtime_dir=tmp_path,
+            enable_hot_radar_scheduler=False,
+        )
+    )
+
+    body = client.get("/api/health").json()
+
+    assert body["analysis_store_configured"] is True
+    assert body["analysis_store_available"] is True
+    assert body["hot_radar_store_configured"] is True
+    assert body["hot_radar_store_available"] is True
+    assert body["database_required"] is False
 
 
 def test_index_serves_workstation_html():
@@ -696,7 +770,7 @@ def test_latest_analysis_restores_latest_completed_cache(monkeypatch, tmp_path):
 
 def test_analysis_history_uses_persistent_store(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
-    monkeypatch.setenv("TRADINGAGENTS_DB_URL", f"sqlite:///{tmp_path / 'analysis.db'}")
+    database_url = f"sqlite:///{tmp_path / 'analysis.db'}"
 
     def fake_runner(request, config, emit):
         return (
@@ -707,7 +781,7 @@ def test_analysis_history_uses_persistent_store(monkeypatch, tmp_path):
             "Hold",
         )
 
-    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path))
+    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path, database_url=database_url))
     client.post(
         "/api/analysis",
         json={"ts_code": "600118.SH", "trade_date": "2026-04-30"},
@@ -725,9 +799,9 @@ def test_analysis_history_uses_persistent_store(monkeypatch, tmp_path):
     assert body["items"][0]["status"] == "completed"
 
 
-def test_delete_analysis_removes_store_record_and_local_files(monkeypatch, tmp_path):
+def test_delete_analysis_soft_deletes_store_record_and_keeps_local_files(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
-    monkeypatch.setenv("TRADINGAGENTS_DB_URL", f"sqlite:///{tmp_path / 'analysis.db'}")
+    database_url = f"sqlite:///{tmp_path / 'analysis.db'}"
 
     def fake_runner(request, config, emit):
         return (
@@ -738,7 +812,7 @@ def test_delete_analysis_removes_store_record_and_local_files(monkeypatch, tmp_p
             "Hold",
         )
 
-    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path))
+    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path, database_url=database_url))
     created = client.post(
         "/api/analysis",
         json={"ts_code": "600118.SH", "trade_date": "2026-04-30"},
@@ -763,30 +837,34 @@ def test_delete_analysis_removes_store_record_and_local_files(monkeypatch, tmp_p
     body = response.json()
     assert body["deleted"] is True
     assert body["task_id"] == created["task_id"]
-    assert body["deleted_files"] >= 2
+    assert body["deleted_files"] == 0
+    assert body["soft_deleted"] is True
     assert cache_key == "600118.SH:2026-04-30"
-    assert not report_file.exists()
-    assert all(not path.exists() for path in cache_files)
+    assert report_file.exists()
+    assert all(path.exists() for path in cache_files)
     assert client.get(f"/api/analysis/{created['task_id']}").status_code == 404
     assert client.get("/api/analysis/history").json()["items"] == []
+    stored = client.app.state.analysis_store.get_task(created["task_id"], include_deleted=True)
+    assert stored is not None
+    assert stored["deleted_at"]
 
 
 def test_latest_analysis_restores_failed_task_with_partial_reports_from_store(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
-    monkeypatch.setenv("TRADINGAGENTS_DB_URL", f"sqlite:///{tmp_path / 'analysis.db'}")
+    database_url = f"sqlite:///{tmp_path / 'analysis.db'}"
 
     def failing_runner(request, config, emit):
         emit("report_section", {"section": "market_report", "content": "失败前技术面"})
         emit("report_section", {"section": "fundamentals_report", "content": "失败前基本面"})
         raise RuntimeError("provider interrupted")
 
-    first_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path))
+    first_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path, database_url=database_url))
     created = first_client.post(
         "/api/analysis",
         json={"ts_code": "603629.SH", "trade_date": "2026-04-30"},
     ).json()
 
-    second_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path))
+    second_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path, database_url=database_url))
     latest = second_client.get("/api/analysis/latest")
 
     assert latest.status_code == 200
@@ -799,19 +877,19 @@ def test_latest_analysis_restores_failed_task_with_partial_reports_from_store(mo
 
 def test_analysis_status_restores_task_by_id_from_store(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
-    monkeypatch.setenv("TRADINGAGENTS_DB_URL", f"sqlite:///{tmp_path / 'analysis.db'}")
+    database_url = f"sqlite:///{tmp_path / 'analysis.db'}"
 
     def failing_runner(request, config, emit):
         emit("report_section", {"section": "market_report", "content": "按 ID 恢复技术面"})
         raise RuntimeError("provider interrupted")
 
-    first_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path))
+    first_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path, database_url=database_url))
     created = first_client.post(
         "/api/analysis",
         json={"ts_code": "603629.SH", "trade_date": "2026-04-30"},
     ).json()
 
-    second_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path))
+    second_client = TestClient(create_app(analysis_runner=failing_runner, runtime_dir=tmp_path, database_url=database_url))
     response = second_client.get(f"/api/analysis/{created['task_id']}")
 
     assert response.status_code == 200
@@ -823,14 +901,14 @@ def test_analysis_status_restores_task_by_id_from_store(monkeypatch, tmp_path):
 
 def test_history_reconciles_completed_report_marked_failed_by_raw_log_bug(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
-    monkeypatch.setenv("TRADINGAGENTS_DB_URL", f"sqlite:///{tmp_path / 'analysis.db'}")
+    database_url = f"sqlite:///{tmp_path / 'analysis.db'}"
 
     def raw_log_bug_runner(request, config, emit):
         emit("report_section", {"section": "market_report", "content": "技术面已完成"})
         emit("report_section", {"section": "final_trade_decision", "content": "Rating: Hold\n最终持有。"})
         raise TypeError("unsupported operand type(s) for /: 'PosixPath' and 'NoneType'")
 
-    client = TestClient(create_app(analysis_runner=raw_log_bug_runner, runtime_dir=tmp_path))
+    client = TestClient(create_app(analysis_runner=raw_log_bug_runner, runtime_dir=tmp_path, database_url=database_url))
     created = client.post(
         "/api/analysis",
         json={"ts_code": "000988.SZ", "trade_date": "2026-04-30"},
@@ -1104,6 +1182,7 @@ def test_hot_radar_api_runs_batch_and_returns_dashboard(monkeypatch, tmp_path):
         create_app(
             analysis_runner=fake_runner,
             runtime_dir=tmp_path,
+            database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
             hot_snapshot_getter=fake_snapshot,
             trade_dates_getter=lambda end_date, limit: ["2026-04-30", "2026-04-29"],
             enable_hot_radar_scheduler=False,
@@ -1131,7 +1210,13 @@ def test_hot_radar_api_runs_batch_and_returns_dashboard(monkeypatch, tmp_path):
 
 def test_hot_radar_run_rejects_unknown_report_models(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
-    client = TestClient(create_app(runtime_dir=tmp_path, enable_hot_radar_scheduler=False))
+    client = TestClient(
+        create_app(
+            runtime_dir=tmp_path,
+            database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
+            enable_hot_radar_scheduler=False,
+        )
+    )
     response = client.post(
         "/api/hot-radar/run",
         json={
@@ -1199,6 +1284,7 @@ def test_hot_radar_fetch_snapshot_endpoint(monkeypatch, tmp_path):
     client = TestClient(
         create_app(
             runtime_dir=tmp_path,
+            database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
             hot_snapshot_getter=fake_snapshot,
             trade_dates_getter=trade_dates_getter,
             enable_hot_radar_scheduler=False,
@@ -1249,6 +1335,7 @@ def test_hot_radar_trade_dates_api_uses_trade_calendar(monkeypatch, tmp_path):
     client = TestClient(
         create_app(
             runtime_dir=tmp_path,
+            database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
             trade_dates_getter=lambda end_date, limit: ["2026-04-30", "2026-04-29"],
             enable_hot_radar_scheduler=False,
         )

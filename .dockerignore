@@ -1,6 +1,8 @@
 .git
 .venv
 .env
+.env.*
+!.env.example
 .claude
 .idea
 .vscode
@@ -11,5 +13,12 @@ build
 dist
 results
 eval_results
+.tradingagents-runtime
+.tradingagents-cache
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+*.log
 Dockerfile
 docker-compose.yml

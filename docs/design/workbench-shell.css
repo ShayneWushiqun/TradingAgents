@@ -290,6 +290,24 @@ textarea {
   color: var(--wb-blue);
 }
 
+.logout-button {
+  min-height: 32px;
+  border-radius: var(--wb-radius);
+  border: 1px solid var(--wb-line);
+  background: var(--wb-surface);
+  color: var(--wb-muted);
+  font-weight: 800;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.logout-button:hover {
+  color: var(--wb-red);
+  border-color: #f4b5ae;
+  background: #fff7f7;
+}
+
 /* Narrow / tablet */
 @media (max-width: 900px) {
   .shell-body {

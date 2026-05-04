@@ -3,6 +3,25 @@ import re
 import subprocess
 
 
+def test_workbench_pages_include_logout_button():
+    page_paths = [
+        Path("docs/design/a-share-workstation.html"),
+        Path("docs/design/hot-radar.html"),
+        Path("docs/design/reports.html"),
+        Path("docs/design/agent-chat.html"),
+        Path("docs/design/settings.html"),
+    ]
+    auth_js = Path("docs/design/auth.js").read_text(encoding="utf-8")
+
+    assert "/api/logout" in auth_js
+    assert "window.location.href = \"/login\"" in auth_js
+    for path in page_paths:
+        html = path.read_text(encoding="utf-8")
+        assert 'data-logout-button' in html
+        assert 'src="/design/auth.js"' in html
+        assert "退出登录" in html
+
+
 def test_a_share_workstation_prototype_exists_with_key_sections():
     html_path = Path("docs/design/a-share-workstation.html")
 
@@ -334,6 +353,7 @@ def test_reports_page_uses_local_snapshot_only_as_fast_first_paint():
     assert "/api/analysis/history?status=completed" in reports_html
     assert "writeCachedReportsSnapshot(hydrated)" in reports_html
     assert "clearCachedReportsSnapshot()" in reports_html
+    assert "HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY" in reports_html
     assert "section_count" in reports_html
     assert "report_sections" in reports_html
     assert "本地快照" in reports_html
@@ -347,6 +367,20 @@ def test_reports_page_offers_one_click_clear_all_completed():
     assert 'id="clear-reports"' in reports_html
     assert "一键清空" in reports_html
     assert "clearAllReports" in reports_html
+    assert "确认删除 ${titleLabel} / ${tradeDate} 的历史记录？" in reports_html
+    assert "确认清空所有已完成的历史报告？" in reports_html
+    delete_start = reports_html.index("async function deleteReport")
+    delete_end = reports_html.index("async function loadReports", delete_start)
+    delete_body = reports_html[delete_start:delete_end]
+    clear_start = reports_html.index("async function clearAllReports")
+    clear_end = reports_html.index("refreshButton.addEventListener", clear_start)
+    clear_body = reports_html[clear_start:clear_end]
+    confirm_body = delete_body + clear_body
+    assert "软删标记" not in confirm_body
+    assert "不会删除报告文件" not in confirm_body
+    assert "DB" not in confirm_body
+    assert "这会删除 MySQL 任务记录" not in confirm_body
+    assert "原始报告文件" not in confirm_body
     assert "/api/analysis/history?status=completed" in reports_html
     assert 'method: "DELETE"' in reports_html
 
@@ -457,10 +491,26 @@ def test_decision_signal_parser_prioritizes_structured_underweight_rating():
     parser_end = html.index("function parseMarkdownTableRow", parser_start)
     parser_body = html[parser_start:parser_end]
 
+    assert parser_body.index("explicitFinalDecisionMatch") < parser_body.index("fromApi")
     assert "structuredMatch" in parser_body
+    assert "最终决定" in parser_body
+    assert "卖出" in parser_body
+    assert "return \"卖出\";" in parser_body
     assert "underweight" in parser_body
     assert "return \"减仓\";" in parser_body
     assert "source.includes(\"buy\")" not in parser_body
+
+
+def test_hot_radar_decision_parser_prioritizes_chinese_final_sell():
+    html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
+    parser_start = html.index("function extractDecisionSignal")
+    parser_end = html.index("function pmDisplayTier", parser_start)
+    parser_body = html[parser_start:parser_end]
+
+    assert parser_body.index("explicitFinalDecisionMatch") < parser_body.index("fromApi")
+    assert "最终决定" in parser_body
+    assert "卖出" in parser_body
+    assert "return \"卖出\";" in parser_body
 
 
 def test_workstation_risk_panel_uses_list_and_filters_markdown_tables():
@@ -584,7 +634,9 @@ def test_hot_radar_calendar_sync_and_row_level_analysis_buttons():
     assert 'data-analyze-force="1"' in html
     assert "force_refresh: Boolean(activeAnalysisModalRow.forceRefresh)" in html
     assert "fetch_if_missing=false" in html
-    assert "isoIsToday" in html
+    assert "REPORT_LOOKBACK_DAYS = 7" in html
+    assert "isWithinReportLookback" in html
+    assert "最近 7 天" in html
     assert "calendarTodayLocal()" in html
     assert "手动触发批量分析" not in html
     assert "runHotRadarBatch" not in html

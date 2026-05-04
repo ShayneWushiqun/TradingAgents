@@ -93,6 +93,23 @@ def test_analysis_store_history_completed_not_masked_by_many_recent_queued(tmp_p
     assert completed_only[0]["request"]["ts_code"] == "600186.SH"
 
 
+def test_analysis_store_soft_deletes_completed_rows_without_removing_db_record(tmp_path):
+    store = AnalysisStore(f"sqlite:///{tmp_path / 'analysis.db'}")
+    request = AnalysisRequest(ts_code="600186.SH", trade_date="2026-05-03")
+    task = AnalysisTask(task_id="done-soft-delete", request=request)
+    task.status = "completed"
+
+    store.upsert_task(task, cache_key="k-soft")
+
+    assert store.soft_delete_completed() == 1
+    assert store.history(limit=10, status="completed") == []
+    stored = store.get_task("done-soft-delete", include_deleted=True)
+    assert stored is not None
+    assert stored["task_id"] == "done-soft-delete"
+    assert stored["status"] == "completed"
+    assert stored["deleted_at"]
+
+
 def test_analysis_store_deletes_task_by_id(tmp_path):
     store = AnalysisStore(f"sqlite:///{tmp_path / 'analysis.db'}")
     request = AnalysisRequest(ts_code="603629.SH", trade_date="2026-04-30")

@@ -111,6 +111,38 @@ def test_history_completed_falls_back_to_disk_cache_when_no_store_or_registry(tm
     assert restored.report_sections.get("final_trade_decision") == "Rating: Hold"
 
 
+def test_history_with_store_does_not_mix_disk_cache_rows(tmp_path):
+    """When the DB store is configured, history is DB-authoritative and ignores loose cache files."""
+
+    from tradingagents.web.analysis_store import AnalysisStore
+
+    cache = AnalysisCache(cache_dir=tmp_path / "cache")
+    cache_only_request = AnalysisRequest(
+        ts_code="600186.SH",
+        trade_date="2026-05-03",
+        force_refresh=True,
+    )
+    cache.set(
+        cache_only_request,
+        final_state={"final_trade_decision": "Rating: Hold\n"},
+        decision="Hold",
+        report_sections={"final_trade_decision": "Rating: Hold"},
+    )
+
+    store = AnalysisStore(f"sqlite:///{tmp_path / 'analysis.db'}")
+    service = AnalysisService(
+        TaskRegistry(),
+        runner=lambda request, config, emit: ({}, ""),
+        run_inline=False,
+        cache=cache,
+        runtime_dir=tmp_path,
+        store=store,
+    )
+
+    assert service.history(limit=20, status="completed") == []
+    assert service.get_task(f"cache:{cache.key_for(cache_only_request)}") is None
+
+
 def test_history_completed_includes_repaired_failed_rows_with_final_decision(tmp_path):
     """A row stored as ``failed`` but with a usable ``final_decision`` must surface as completed."""
     from tradingagents.web.analysis_store import AnalysisStore

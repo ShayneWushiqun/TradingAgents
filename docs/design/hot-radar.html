@@ -809,6 +809,7 @@
           <span class="pill green">自动定时已启用</span>
           <span class="pill blue">热股 Top 20</span>
         </div>
+        <button class="logout-button" type="button" data-logout-button>退出登录</button>
       </div>
     </header>
 
@@ -938,6 +939,7 @@
     </section>
   </div>
 
+  <script src="/design/auth.js"></script>
   <script>
     const topN = document.querySelector("#top-n");
     const currentTradeDateEl = document.querySelector("#current-trade-date");
@@ -960,6 +962,7 @@
     const HOT_RADAR_DASHBOARD_CACHE_PREFIX = "TRADINGAGENTS_HOT_RADAR_DASHBOARD_SNAPSHOT_V1";
     const HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY = "TRADINGAGENTS_HOT_RADAR_COMPLETED_HISTORY_SNAPSHOT_V1";
     const HOT_RADAR_COMPLETED_HISTORY_CACHE_LIMIT = 150;
+    const REPORT_LOOKBACK_DAYS = 7;
     function getSelectedReportModel() {
       const model = localStorage.getItem(REPORT_MODEL_STORAGE_KEY);
       return model === "deepseek-v4-flash" ? model : "deepseek-v4-pro";
@@ -1282,7 +1285,8 @@
     function mapTierToCnLabel(tierEn) {
       const t = String(tierEn || "").toLowerCase();
       if (/(^|\b)(buy|overweight|strong\s*buy)(\b|$)/.test(t)) return "增持";
-      if (/(^|\b)(underweight|sell)(\b|$)/.test(t)) return "减仓";
+      if (/(^|\b)(underweight)(\b|$)/.test(t)) return "减仓";
+      if (/(^|\b)(sell)(\b|$)/.test(t)) return "卖出";
       if (/(^|\b)(hold|neutral)(\b|$)/.test(t)) return "持有";
       return "";
     }
@@ -1308,11 +1312,19 @@
       const normalizeLoose = (value) => {
         const source = String(value || "").toLowerCase();
         if (/(strong\s+buy|overweight|buy|增持|买入)/.test(source)) return "增持";
-        if (/(underweight|sell|reduce|trim|减仓|减持|卖出|减配)/.test(source)) return "减仓";
+        if (/(sell|卖出|清仓)/.test(source)) return "卖出";
+        if (/(underweight|reduce|trim|减仓|减持|减配)/.test(source)) return "减仓";
         if (/(观望|观察)(\b|$)/.test(source) || /^观察$/i.test(String(value || "").trim())) return "观察";
         if (/(hold|neutral|中性|持有)/.test(source)) return "持有";
         return "";
       };
+
+      const cleaned = String(text || "").replace(/\*\*/g, "");
+      const explicitFinalDecisionMatch = cleaned.match(
+        /(?:最终决定|最终决策|最终交易决策|交易决策|操作建议|final\s+(?:decision|trade\s+decision)|final\s+transaction\s+proposal|rating|action|recommendation)\s*[：:\-]\s*([^\n。；;]+)/i
+      );
+      const explicitFinalSignal = normalizeLoose(explicitFinalDecisionMatch?.[1]);
+      if (explicitFinalSignal) return explicitFinalSignal;
 
       const fromReport = extractFiveTierFromReport(text);
       if (fromReport) return fromReport;
@@ -1320,7 +1332,6 @@
       const fromApi = mapTierToCnLabel(apiDecision) || normalizeLoose(apiDecision);
       if (fromApi) return fromApi;
 
-      const cleaned = String(text || "").replace(/\*\*/g, "");
       const structuredMatch = cleaned.match(
         /(?:final\s+transaction\s+proposal|rating|action|recommendation)\s*[:：]\s*([^\n。；;]+)/i,
       );
@@ -1334,7 +1345,7 @@
     function pmDisplayTier(signalRaw) {
       const s = String(signalRaw || "").trim();
       if (s === "增持") return { label: "买入", tone: "decision-chip--buy" };
-      if (s === "减仓") return { label: "卖出", tone: "decision-chip--sell" };
+      if (s === "减仓" || s === "卖出") return { label: "卖出", tone: "decision-chip--sell" };
       if (s === "持有") return { label: "持有", tone: "decision-chip--hold" };
       if (s === "观察") return { label: "观望", tone: "decision-chip--watch" };
       if (s === "等待报告" || !s) return { label: "观望", tone: "decision-chip--watch" };
@@ -1372,14 +1383,11 @@
       return String(row.updated_at || row.completed_at || row.created_at || "");
     }
 
-    function isoIsToday(iso) {
+    function isWithinReportLookback(iso) {
       const t = Date.parse(String(iso || ""));
       if (!Number.isFinite(t)) return false;
-      const d = new Date(t);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}` === calendarTodayLocal();
+      const ageMs = Date.now() - t;
+      return ageMs >= 0 && ageMs <= REPORT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
     }
 
     function buildCompletedReportByStock() {
@@ -1472,15 +1480,15 @@
       return best;
     }
 
-    /** Priority 2: latest completed report for that ts_code, **only if generated today (local calendar)**.
+    /** Priority 2: latest completed report for that ts_code, only if generated in the recent lookback window.
 
-     Reports older than today are intentionally excluded from Hot Radar row state — yesterday's
-     verdicts shouldn't masquerade as the current day's view (they're still on the Reports page).
+     Rows are already sorted newest-first, so multiple reports for the same stock still resolve
+     to the latest report while avoiding token-heavy reruns within the recent 7-day window.
      */
     function pickCompletedForRow(tsNormalized) {
       const rows = completedReportByStock.get(tsNormalized) || [];
       for (const r of rows) {
-        if (isoIsToday(rowSortTime(r))) return r;
+        if (isWithinReportLookback(rowSortTime(r))) return r;
       }
       return null;
     }
@@ -1923,7 +1931,7 @@
         </section>
         <section class="insight-card notice">
           <h3>分析入口</h3>
-          <p>热股与「异常」中 A 股代码：无记录时显示<strong>分析</strong>。行状态优先级：<strong>当前队列</strong>（queued / running / stopping / stopped）→ <strong>已完成报告</strong>（按 <code>ts_code</code> 取 <code>updated_at</code> 最新一条，<strong>仅展示今日生成</strong>；昨天及更早的不再回填到榜单行）→ 未分析。本页打开<strong>不会自动拉</strong> Tushare：DB 没快照时请点顶部「同步榜单」。<strong>「再次分析」 = <code>force_refresh: true</code> 强制重跑</strong>，不覆盖旧报告。队列面板不展示 completed；无法解析评级时显示<strong>已完成</strong>。</p>
+          <p>热股与「异常」中 A 股代码：无记录时显示<strong>分析</strong>。行状态优先级：<strong>当前队列</strong>（queued / running / stopping / stopped）→ <strong>已完成报告</strong>（按 <code>ts_code</code> 取 <code>updated_at</code> 最新一条，<strong>仅展示最近 7 天生成</strong>）→ 未分析。本页打开<strong>不会自动拉</strong> Tushare：DB 没快照时请点顶部「同步榜单」。<strong>「再次分析」 = <code>force_refresh: true</code> 强制重跑</strong>，不覆盖旧报告。队列面板不展示 completed；无法解析评级时显示<strong>已完成</strong>。</p>
         </section>`;
     }
 

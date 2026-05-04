@@ -42,6 +42,16 @@ class TestParseRating:
         text = "### **最终评级：Sell**\n清仓离场。\n前文也可提及 Hold。\n"
         assert parse_rating(text) == "Sell"
 
+    def test_chinese_final_decision_sell_wins_over_default_hold(self):
+        text = (
+            "核心理由里可能出现持有一词。\n\n"
+            "**最终决定：卖出 `002297.SZ`**"
+        )
+        assert parse_rating(text) == "Sell"
+
+    def test_chinese_final_decision_underweight(self):
+        assert parse_rating("最终决策：减仓 600118.SH，控制风险。") == "Underweight"
+
     def test_rendered_pm_markdown_shape(self):
         # The exact shape produced by render_pm_decision must always parse.
         text = (

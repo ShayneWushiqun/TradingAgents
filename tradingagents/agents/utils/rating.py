@@ -55,9 +55,28 @@ def _labeled_rating_patterns() -> tuple[re.Pattern[str], ...]:
 
 
 _LABELED_LINE_HINT = re.compile(
-    r"(rating|评级|最终评级|recommendation\s*[:：]|action\s*[:：])",
+    r"(rating|评级|最终评级|最终决定|最终决策|最终交易决策|recommendation\s*[:：]|action\s*[:：])",
     re.IGNORECASE,
 )
+
+_CHINESE_RATING_LABEL_RE = re.compile(
+    r"(?:评级|最终评级|最终决定|最终决策|最终交易决策|交易决策|操作建议)\s*[：:\-]\s*"
+    r"(?P<tier>买入|增持|持有|观望|中性|减仓|减持|减配|卖出|清仓)",
+    re.IGNORECASE,
+)
+
+_CHINESE_RATING_MAP = {
+    "买入": "Buy",
+    "增持": "Overweight",
+    "持有": "Hold",
+    "观望": "Hold",
+    "中性": "Hold",
+    "减仓": "Underweight",
+    "减持": "Underweight",
+    "减配": "Underweight",
+    "卖出": "Sell",
+    "清仓": "Sell",
+}
 
 
 def parse_rating(text: str, default: str = "Hold") -> str:
@@ -77,6 +96,9 @@ def parse_rating(text: str, default: str = "Hold") -> str:
     for line in lines:
         if not line.strip():
             continue
+        chinese_match = _CHINESE_RATING_LABEL_RE.search(line)
+        if chinese_match:
+            return _CHINESE_RATING_MAP[chinese_match.group("tier")]
         for pat in patterns:
             m = pat.search(line)
             if m and m.group(1).lower() in _RATING_SET:

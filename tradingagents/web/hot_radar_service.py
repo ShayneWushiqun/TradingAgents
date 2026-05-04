@@ -210,7 +210,9 @@ class HotRadarService:
         hot_snapshot_getter: HotSnapshotGetter | None = None,
         trade_dates_getter: TradeDatesGetter | None = None,
     ) -> "HotRadarService":
-        url = database_url or f"sqlite:///{Path(runtime_dir) / 'hot-radar.sqlite3'}"
+        url = str(database_url or "").strip()
+        if not url:
+            raise ValueError("TRADINGAGENTS_DB_URL is required; Hot Radar storage must use MySQL.")
         return cls(
             analysis_service=analysis_service,
             database_url=url,

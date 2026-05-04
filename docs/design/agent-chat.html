@@ -445,6 +445,9 @@
           <p class="topbar-sub">Agent Chat · TradingAgents 报告上下文</p>
         </div>
       </div>
+      <div class="topbar-actions">
+        <button class="logout-button" type="button" data-logout-button>退出登录</button>
+      </div>
     </header>
 
     <div class="shell-body">
@@ -513,6 +516,7 @@
     </div>
   </div>
 
+  <script src="/design/auth.js"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     const CHAT_HISTORY_STORAGE_KEY = "a-share-agent-chat-history-v1";

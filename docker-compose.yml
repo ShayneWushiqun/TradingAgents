@@ -3,31 +3,52 @@ services:
     image: mysql:8.4
     container_name: tradingagents-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: tradingagents_root
-      MYSQL_DATABASE: tradingagents
-      MYSQL_USER: tradingagents
-      MYSQL_PASSWORD: tradingagents
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tradingagents_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-tradingagents}
+      MYSQL_USER: ${MYSQL_USER:-tradingagents}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tradingagents}
     ports:
-      - "3307:3306"
+      - "${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
-      - ./.tradingagents-runtime/mysql:/var/lib/mysql
+      - tradingagents_mysql:/var/lib/mysql
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-utradingagents", "-ptradingagents"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  tradingagents:
+  tradingagents-web:
     build: .
+    image: ${TRADINGAGENTS_IMAGE:-tradingagents-a-share:latest}
+    container_name: tradingagents-web
     env_file:
-      - .env
+      - ${TRADINGAGENTS_ENV_FILE:-./.env}
+    environment:
+      TRADINGAGENTS_DB_URL: mysql+pymysql://${MYSQL_USER:-tradingagents}:${MYSQL_PASSWORD:-tradingagents}@tradingagents-mysql:3306/${MYSQL_DATABASE:-tradingagents}
+      HOT_RADAR_SCHEDULER_ENABLED: ${HOT_RADAR_SCHEDULER_ENABLED:-1}
+    depends_on:
+      tradingagents-mysql:
+        condition: service_healthy
+    ports:
+      - "${TRADINGAGENTS_WEB_PORT:-8000}:8000"
     volumes:
-      - tradingagents_data:/home/appuser/.tradingagents
-    tty: true
-    stdin_open: true
+      - ${TRADINGAGENTS_ENV_FILE:-./.env}:/home/appuser/app/.env:ro
+      - tradingagents_runtime:/home/appuser/app/.tradingagents-runtime
+      - tradingagents_cache:/home/appuser/.tradingagents
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).read()\"",
+        ]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
 
   ollama:
     image: ollama/ollama:latest
@@ -38,19 +59,28 @@ services:
 
   tradingagents-ollama:
     build: .
+    image: ${TRADINGAGENTS_IMAGE:-tradingagents-a-share:latest}
     env_file:
-      - .env
+      - ${TRADINGAGENTS_ENV_FILE:-./.env}
     environment:
       - LLM_PROVIDER=ollama
+      - TRADINGAGENTS_DB_URL=mysql+pymysql://${MYSQL_USER:-tradingagents}:${MYSQL_PASSWORD:-tradingagents}@tradingagents-mysql:3306/${MYSQL_DATABASE:-tradingagents}
     volumes:
-      - tradingagents_data:/home/appuser/.tradingagents
+      - ${TRADINGAGENTS_ENV_FILE:-./.env}:/home/appuser/app/.env:ro
+      - tradingagents_runtime:/home/appuser/app/.tradingagents-runtime
+      - tradingagents_cache:/home/appuser/.tradingagents
     depends_on:
-      - ollama
+      tradingagents-mysql:
+        condition: service_healthy
+      ollama:
+        condition: service_started
     tty: true
     stdin_open: true
     profiles:
       - ollama
 
 volumes:
-  tradingagents_data:
+  tradingagents_mysql:
+  tradingagents_runtime:
+  tradingagents_cache:
   ollama_data:

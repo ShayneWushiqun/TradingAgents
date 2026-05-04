@@ -124,6 +124,9 @@
           <p class="topbar-sub">数据与模型 · Tushare Pro / AKShare / Tavily / MySQL</p>
         </div>
       </div>
+      <div class="topbar-actions">
+        <button class="logout-button" type="button" data-logout-button>退出登录</button>
+      </div>
     </header>
 
     <div class="shell-body">
@@ -194,6 +197,7 @@
     </div>
   </div>
 
+  <script src="/design/auth.js"></script>
   <script>
     const tushareStatus = document.querySelector("#tushare-status");
     const mysqlStatus = document.querySelector("#mysql-status");
@@ -215,9 +219,11 @@
         );
         setStatus(
           mysqlStatus,
-          Boolean(health.analysis_store_available),
-          health.analysis_store_available ? "MySQL 已连接" : "MySQL 不可用",
-          health.analysis_store_error || "analysis_store_configured=" + health.analysis_store_configured
+          Boolean(health.analysis_store_available && health.hot_radar_store_available),
+          health.analysis_store_available && health.hot_radar_store_available ? "MySQL 已连接" : "MySQL 不可用",
+          health.analysis_store_error ||
+            health.hot_radar_store_error ||
+            `analysis_store=${Boolean(health.analysis_store_available)} · hot_radar_store=${Boolean(health.hot_radar_store_available)}`
         );
       } catch (error) {
         setStatus(tushareStatus, false, "状态读取失败", "无法访问 /api/health");

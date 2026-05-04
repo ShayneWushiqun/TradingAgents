@@ -191,6 +191,9 @@
           <p class="topbar-sub">历史报告 · MySQL 任务索引 + 项目内报告缓存</p>
         </div>
       </div>
+      <div class="topbar-actions">
+        <button class="logout-button" type="button" data-logout-button>退出登录</button>
+      </div>
     </header>
 
     <div class="shell-body">
@@ -241,10 +244,12 @@
     </div>
   </div>
 
+  <script src="/design/auth.js"></script>
   <script>
     const reportNameCache = new Map();
     /* 本地快照只用于首屏加速；刷新完成后一切以 DB 为准。 */
     const REPORTS_HISTORY_CACHE_KEY = "TRADINGAGENTS_REPORTS_HISTORY_SNAPSHOT_V1";
+    const HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY = "TRADINGAGENTS_HOT_RADAR_COMPLETED_HISTORY_SNAPSHOT_V1";
     const REPORTS_HISTORY_CACHE_LIMIT = 120;
 
     function safeReadJson(key) {
@@ -432,6 +437,7 @@
 
     function clearCachedReportsSnapshot() {
       safeRemoveStorage(REPORTS_HISTORY_CACHE_KEY);
+      safeRemoveStorage(HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY);
     }
 
     function formatReportCardTitle(tsCode, explicitName = "") {
@@ -491,7 +497,7 @@
       const tradeDate = item.request?.trade_date || item.trade_date || "--";
       const titleLabel = formatReportCardTitle(code, requestName);
       const confirmed = window.confirm(
-        `确认删除 ${titleLabel} / ${tradeDate} 的历史记录？\n\n这会删除 MySQL 任务记录，以及当前项目 .tradingagents-runtime 下对应的分析缓存和原始报告文件。`
+        `确认删除 ${titleLabel} / ${tradeDate} 的历史记录？`
       );
       if (!confirmed) {
         return;
@@ -596,9 +602,7 @@
     }
 
     async function clearAllReports() {
-      const confirmed = window.confirm(
-        "确认清空所有已完成的历史报告？\n\n这会一次性删除：\n· MySQL 任务索引中所有 status = completed 的记录\n· 项目内 .tradingagents-runtime 下对应的分析缓存与报告文件\n· 用户家目录 ~/.tradingagents/cache 下对应的分析缓存\n\n该操作不可恢复，运行中 / 排队中的任务不会被影响。"
-      );
+      const confirmed = window.confirm("确认清空所有已完成的历史报告？");
       if (!confirmed) return;
       clearButton.disabled = true;
       clearButton.textContent = "清空中…";

@@ -157,6 +157,38 @@ Alternatively, copy `.env.example` to `.env` and fill in your keys:
 cp .env.example .env
 ```
 
+### Web Workstation MySQL
+
+The A-Share web workstation requires MySQL for runtime state. Set `TRADINGAGENTS_DB_URL`
+before starting `tradingagents.web.app`; analysis tasks, Hot Radar snapshots, queue state,
+and history all use that database as the source of truth.
+
+For the bundled local MySQL:
+```bash
+docker compose up -d tradingagents-mysql
+export TRADINGAGENTS_DB_URL=mysql+pymysql://tradingagents:tradingagents@127.0.0.1:3307/tradingagents
+```
+
+When running the app inside Docker Compose, the app containers use the MySQL service name
+(`tradingagents-mysql:3306`) automatically.
+
+Set `TRADINGAGENTS_WEB_PASSWORD` to enable the login page before exposing the workstation
+publicly. The session cookie expires after 8 hours.
+
+### Docker Deployment
+
+On a server, keep secrets in an untracked `.env` file and start both MySQL and the web
+workstation with Docker Compose:
+
+```bash
+cp .env.example .env
+# edit .env: API keys, TRADINGAGENTS_WEB_PASSWORD, TRADINGAGENTS_WEB_SECRET, MySQL passwords
+docker compose up -d --build tradingagents-web
+```
+
+The web app listens on `${TRADINGAGENTS_WEB_PORT:-8000}`. Compose mounts `.env` into the
+container as read-only and stores MySQL/runtime data in Docker volumes.
+
 ### CLI Usage
 
 Launch the interactive CLI:

@@ -898,6 +898,7 @@
           <span class="pill blue">积分 6,240</span>
           <span class="pill gray">8000+ 增强提示</span>
         </div>
+        <button class="logout-button" type="button" data-logout-button>退出登录</button>
       </div>
     </header>
 
@@ -1124,6 +1125,7 @@
       </main>
     </div>
   </div>
+  <script src="/design/auth.js"></script>
   <script>
     const runButton = document.querySelector("#run-analysis");
     const forceRefreshButton = document.querySelector("#force-refresh-analysis");
@@ -1471,7 +1473,8 @@
     function mapTierToCnLabel(tierEn) {
       const t = String(tierEn || "").toLowerCase();
       if (/(^|\b)(buy|overweight|strong\s*buy)(\b|$)/.test(t)) return "增持";
-      if (/(^|\b)(underweight|sell)(\b|$)/.test(t)) return "减仓";
+      if (/(^|\b)(underweight)(\b|$)/.test(t)) return "减仓";
+      if (/(^|\b)(sell)(\b|$)/.test(t)) return "卖出";
       if (/(^|\b)(hold|neutral)(\b|$)/.test(t)) return "持有";
       return "";
     }
@@ -1497,10 +1500,18 @@
       const normalizeLoose = (value) => {
         const source = String(value || "").toLowerCase();
         if (/(strong\s+buy|overweight|buy|增持|买入)/.test(source)) return "增持";
-        if (/(underweight|sell|reduce|trim|减仓|减持|卖出)/.test(source)) return "减仓";
+        if (/(sell|卖出|清仓)/.test(source)) return "卖出";
+        if (/(underweight|reduce|trim|减仓|减持|减配)/.test(source)) return "减仓";
         if (/(hold|neutral|中性|持有|观望)/.test(source)) return "持有";
         return "";
       };
+
+      const cleaned = String(text || "").replace(/\*\*/g, "");
+      const explicitFinalDecisionMatch = cleaned.match(
+        /(?:最终决定|最终决策|最终交易决策|交易决策|操作建议|final\s+(?:decision|trade\s+decision)|final\s+transaction\s+proposal|rating|action|recommendation)\s*[：:\-]\s*([^\n。；;]+)/i
+      );
+      const explicitFinalSignal = normalizeLoose(explicitFinalDecisionMatch?.[1]);
+      if (explicitFinalSignal) return explicitFinalSignal;
 
       const fromReport = extractFiveTierFromReport(text);
       if (fromReport) return fromReport;
@@ -1508,7 +1519,6 @@
       const fromApi = mapTierToCnLabel(apiDecision) || normalizeLoose(apiDecision);
       if (fromApi) return fromApi;
 
-      const cleaned = String(text || "").replace(/\*\*/g, "");
       const structuredMatch = cleaned.match(
         /(?:final\s+transaction\s+proposal|rating|action|recommendation)\s*[:：]\s*([^\n。；;]+)/i
       );
@@ -1668,7 +1678,7 @@
       }
 
       const signal = extractDecisionSignal(finalDecision, decision);
-      const confidenceMap = { 增持: 72, 持有: 56, 减仓: 64 };
+      const confidenceMap = { 增持: 72, 持有: 56, 减仓: 64, 卖出: 64 };
       const confidence = confidenceMap[signal] || 60;
       const reasons = extractDecisionReasons(finalDecision);
       const riskLines = extractRiskSentences(finalDecision);

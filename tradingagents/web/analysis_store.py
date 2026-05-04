@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 from typing import Any
 
-from sqlalchemy import Boolean, String, Table, Text, create_engine, delete, inspect, insert, select, text
+from sqlalchemy import Boolean, String, Table, Text, create_engine, delete, inspect, insert, select, text, update
 from sqlalchemy import MetaData, Column
 from sqlalchemy.engine import Engine
 
@@ -32,6 +32,7 @@ class AnalysisStore:
             Column("error", Text, nullable=False, default=""),
             Column("created_at", String(32), nullable=False),
             Column("updated_at", String(32), nullable=False),
+            Column("deleted_at", String(32), nullable=True),
         )
         self.metadata.create_all(self.engine)
         self._ensure_columns()
@@ -51,6 +52,7 @@ class AnalysisStore:
         statement = (
             select(self.tasks)
             .where(self.tasks.c.status == "completed")
+            .where(self.tasks.c.deleted_at.is_(None))
             .order_by(self.tasks.c.updated_at.desc())
             .limit(1)
         )
@@ -58,8 +60,10 @@ class AnalysisStore:
             row = connection.execute(statement).mappings().first()
         return self._decode_row(row) if row is not None else None
 
-    def get_task(self, task_id: str) -> dict[str, Any] | None:
+    def get_task(self, task_id: str, include_deleted: bool = False) -> dict[str, Any] | None:
         statement = select(self.tasks).where(self.tasks.c.task_id == task_id).limit(1)
+        if not include_deleted:
+            statement = statement.where(self.tasks.c.deleted_at.is_(None))
         with self.engine.connect() as connection:
             row = connection.execute(statement).mappings().first()
         return self._decode_row(row) if row is not None else None
@@ -70,9 +74,34 @@ class AnalysisStore:
             result = connection.execute(statement)
         return bool(result.rowcount)
 
-    def history(self, limit: int = 50, status: str | None = None) -> list[dict[str, Any]]:
+    def soft_delete_task(self, task_id: str) -> bool:
+        statement = (
+            update(self.tasks)
+            .where(self.tasks.c.task_id == task_id)
+            .where(self.tasks.c.status == "completed")
+            .where(self.tasks.c.deleted_at.is_(None))
+            .values(deleted_at=self._now_iso())
+        )
+        with self.engine.begin() as connection:
+            result = connection.execute(statement)
+        return bool(result.rowcount)
+
+    def soft_delete_completed(self) -> int:
+        statement = (
+            update(self.tasks)
+            .where(self.tasks.c.status == "completed")
+            .where(self.tasks.c.deleted_at.is_(None))
+            .values(deleted_at=self._now_iso())
+        )
+        with self.engine.begin() as connection:
+            result = connection.execute(statement)
+        return int(result.rowcount or 0)
+
+    def history(self, limit: int = 50, status: str | None = None, include_deleted: bool = False) -> list[dict[str, Any]]:
         cap = max(1, min(int(limit), 200))
         statement = select(self.tasks)
+        if not include_deleted:
+            statement = statement.where(self.tasks.c.deleted_at.is_(None))
         st = str(status or "").strip()
         if st:
             statement = statement.where(self.tasks.c.status == st)
@@ -104,6 +133,7 @@ class AnalysisStore:
             "error": task.error,
             "created_at": self._iso(task.created_at),
             "updated_at": self._iso(task.updated_at),
+            "deleted_at": None,
         }
 
     def _decode_row(self, row: Any) -> dict[str, Any]:
@@ -111,17 +141,22 @@ class AnalysisStore:
         data["request"] = json.loads(data.pop("request_json"))
         data["report_sections"] = json.loads(data.pop("report_sections_json", "{}") or "{}")
         data["cached"] = bool(data["cached"])
+        data["deleted_at"] = data.get("deleted_at") or ""
         return data
 
     def _iso(self, value: datetime) -> str:
         return value.isoformat(timespec="microseconds") + "Z"
 
+    def _now_iso(self) -> str:
+        return self._iso(datetime.utcnow())
+
     def _ensure_columns(self) -> None:
         existing = {column["name"] for column in inspect(self.engine).get_columns("analysis_tasks")}
-        if "report_sections_json" in existing:
-            return
         with self.engine.begin() as connection:
-            connection.execute(text("ALTER TABLE analysis_tasks ADD COLUMN report_sections_json TEXT"))
-            connection.execute(
-                text("UPDATE analysis_tasks SET report_sections_json = '{}' WHERE report_sections_json = ''")
-            )
+            if "report_sections_json" not in existing:
+                connection.execute(text("ALTER TABLE analysis_tasks ADD COLUMN report_sections_json TEXT"))
+                connection.execute(
+                    text("UPDATE analysis_tasks SET report_sections_json = '{}' WHERE report_sections_json = ''")
+                )
+            if "deleted_at" not in existing:
+                connection.execute(text("ALTER TABLE analysis_tasks ADD COLUMN deleted_at VARCHAR(32)"))
