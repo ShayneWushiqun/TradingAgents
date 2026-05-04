@@ -14,10 +14,11 @@
     /* Analyze page grid — sidebar chrome lives in workbench-shell.css */
     .workspace {
       display: grid;
-      grid-template-columns: clamp(260px, 22vw, 340px) minmax(0, 1fr) clamp(320px, 26vw, 420px);
+      grid-template-columns: clamp(260px, 22vw, 340px) minmax(0, 1fr) clamp(320px, 24vw, 420px);
       gap: 20px;
       align-items: start;
       width: 100%;
+      max-width: none;
       min-width: 0;
       padding: 0;
     }
@@ -281,7 +282,7 @@
       background: var(--surface-soft);
       border-radius: 8px;
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       padding: 4px;
       gap: 4px;
     }
@@ -800,14 +801,34 @@
       border: 1px solid #efc876;
       background: var(--amber-soft);
       border-radius: 8px;
-      padding: 16px 18px;
+      padding: 12px 14px 14px;
       color: var(--amber);
-      line-height: 20px;
+      line-height: 1.45;
       font-size: 12px;
       margin-top: 14px;
-      max-height: 220px;
+      max-height: min(70vh, 520px);
       overflow-y: auto;
-      white-space: pre-wrap;
+      white-space: normal;
+    }
+
+    .risk-box .risk-bullets {
+      margin: 0;
+      padding-left: 1.15rem;
+      list-style-type: disc;
+    }
+
+    .risk-box .risk-bullets li {
+      margin: 0 0 8px;
+    }
+
+    .risk-box .risk-bullets li:last-child {
+      margin-bottom: 0;
+    }
+
+    .risk-box .risk-empty {
+      margin: 0;
+      color: var(--amber);
+      line-height: 1.45;
     }
 
     .tabs {
@@ -924,6 +945,7 @@
               <option value="688981.SH 中芯国际"></option>
               <option value="000333.SZ 美的集团"></option>
               <option value="002594.SZ 比亚迪"></option>
+              <option value="601991.SH 大唐发电"></option>
             </datalist>
           </div>
           <div class="field">
@@ -964,10 +986,16 @@
 
         <h3 class="block-title">研究深度</h3>
         <div class="segmented" id="research-depth" role="group" aria-label="研究深度">
-          <button type="button" class="segment" data-depth="1" aria-pressed="false">快速</button>
           <button type="button" class="segment active" data-depth="3" aria-pressed="true">标准</button>
           <button type="button" class="segment" data-depth="5" aria-pressed="false">深度</button>
         </div>
+
+        <h3 class="block-title">报告分析模型</h3>
+        <div class="segmented report-model-segmented" id="report-model-selector" role="radiogroup" aria-label="报告分析模型">
+          <button type="button" class="segment active" data-report-model="deepseek-v4-pro" aria-checked="true">V4 Pro</button>
+          <button type="button" class="segment" data-report-model="deepseek-v4-flash" aria-checked="false">V4 Flash</button>
+        </div>
+        <p class="hint model-hint" id="report-model-hint">当前报告分析使用 DeepSeek V4 Pro</p>
 
         <div class="analysis-actions">
           <button class="primary-btn" id="run-analysis">开始分析</button>
@@ -1122,11 +1150,37 @@
     const decisionRisk = document.querySelector("#decision-risk");
     const analystChips = Array.from(document.querySelectorAll("[data-analyst]"));
     const depthSegments = Array.from(document.querySelectorAll("[data-depth]"));
+    const reportModelSegments = Array.from(document.querySelectorAll("[data-report-model]"));
+    const reportModelHint = document.querySelector("#report-model-hint");
     let currentTaskId = null;
     let currentEventSource = null;
+    /** Last API ``decision`` from a completed / hydrated task; used when re-syncing the PM panel without full status. */
+    let lastKnownPmDecision = "";
     let activeReportSection = "final_trade_decision";
     const reportSections = {};
     const WORKSTATION_STATE_KEY = "tradingagents_a_share_workstation_state";
+    const STOCK_NAME_STORAGE_KEY = "tradingagents_a_share_stock_names";
+    const REPORT_MODEL_STORAGE_KEY = "TRADINGAGENTS_REPORT_MODEL";
+
+    function getSelectedReportModel() {
+      const model = localStorage.getItem(REPORT_MODEL_STORAGE_KEY);
+      return model === "deepseek-v4-flash" ? model : "deepseek-v4-pro";
+    }
+
+    function restoreReportModelUI() {
+      const selected = getSelectedReportModel();
+      reportModelSegments.forEach((segment) => {
+        const active = segment.dataset.reportModel === selected;
+        segment.classList.toggle("active", active);
+        segment.setAttribute("aria-checked", String(active));
+      });
+      if (reportModelHint) {
+        reportModelHint.textContent =
+          selected === "deepseek-v4-flash"
+            ? "当前报告分析使用 DeepSeek V4 Flash"
+            : "当前报告分析使用 DeepSeek V4 Pro";
+      }
+    }
 
     const stepNames = [
       "Market Analyst",
@@ -1161,7 +1215,54 @@
       "688981.SH": { name: "中芯国际", board: "科创板", sector: "半导体" },
       "000333.SZ": { name: "美的集团", board: "深市主板", sector: "家电" },
       "002594.SZ": { name: "比亚迪", board: "深市主板", sector: "汽车" },
+      "601991.SH": { name: "大唐发电", board: "沪市主板", sector: "电力" },
     };
+
+    function readStockNameCache() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STOCK_NAME_STORAGE_KEY) || "{}");
+        return raw && typeof raw === "object" ? raw : {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    const dynamicStockNames = readStockNameCache();
+
+    function cacheStockDisplayName(tsCode, name) {
+      const code = String(tsCode || "").trim().toUpperCase();
+      const displayName = String(name || "").trim();
+      if (!/^\d{6}\.(SH|SZ|BJ)$/.test(code) || !displayName || displayName === code) return;
+      dynamicStockNames[code] = displayName;
+      try {
+        localStorage.setItem(STOCK_NAME_STORAGE_KEY, JSON.stringify(dynamicStockNames));
+      } catch (_) {
+        /* localStorage may be unavailable in restricted browser contexts. */
+      }
+    }
+
+    function resolveStockProfile(tsCode) {
+      const code = String(tsCode || "").trim().toUpperCase();
+      const dynamicName = (dynamicStockNames[code] || "").trim();
+      const base = stockProfiles[code];
+      if (base) {
+        return {
+          ...base,
+          name: dynamicName || base.name,
+        };
+      }
+      return {
+        name: dynamicName || code,
+        board: code.endsWith(".SH") ? "沪市" : code.endsWith(".SZ") ? "深市" : code.endsWith(".BJ") ? "北交所" : "A股",
+        sector: "待识别",
+      };
+    }
+
+    function formatBoardShort(board) {
+      const b = String(board || "").trim();
+      if (!b) return "A股";
+      return b.replace(/主板$/, "");
+    }
 
     function inferAshareTsCode(rawCode) {
       if (!/^\d{6}$/.test(rawCode)) return rawCode;
@@ -1182,7 +1283,7 @@
     function normalizeStockInputField() {
       const { tsCode, profile } = getCurrentSelection();
       if (/^\d{6}\.(SH|SZ|BJ)$/.test(tsCode)) {
-        stockCodeInput.value = stockProfiles[tsCode] ? `${tsCode} ${profile.name}` : tsCode;
+        stockCodeInput.value = profile.name && profile.name !== tsCode ? `${tsCode} ${profile.name}` : tsCode;
       }
     }
 
@@ -1196,12 +1297,31 @@
           profile: { name: "等待选择股票", board: "", sector: "" },
         };
       }
-      const profile = stockProfiles[tsCode] || {
-        name: tsCode,
-        board: tsCode.endsWith(".SH") ? "沪市" : tsCode.endsWith(".SZ") ? "深市" : tsCode.endsWith(".BJ") ? "北交所" : "A股",
-        sector: "待识别",
-      };
+      const profile = resolveStockProfile(tsCode);
       return { tsCode, tradeDate, profile };
+    }
+
+    function getCurrentStockDisplayName(tsCode) {
+      const code = String(tsCode || "").trim().toUpperCase();
+      if (!code) return "";
+      const cached = dynamicStockNames[code];
+      if (cached && cached !== code) return cached;
+      const profile = resolveStockProfile(code);
+      return profile.name && profile.name !== code ? profile.name : "";
+    }
+
+    async function fetchStockNameFromApi(tsCode) {
+      const code = String(tsCode || "").trim().toUpperCase();
+      if (!/^\d{6}\.(SH|SZ|BJ)$/.test(code)) return "";
+      try {
+        const response = await fetch(`/api/stocks/${encodeURIComponent(code)}/name`);
+        const body = await response.json().catch(() => ({}));
+        const n = String(body.stock_name || "").trim();
+        if (n) cacheStockDisplayName(code, n);
+        return n;
+      } catch (_) {
+        return "";
+      }
     }
 
     function getSelectedAnalysts() {
@@ -1234,14 +1354,16 @@
 
     function buildAnalysisPayload(forceRefresh = false) {
       const selection = getCurrentSelection();
+      const reportModel = getSelectedReportModel();
       return {
         ts_code: selection.tsCode,
+        stock_name: getCurrentStockDisplayName(selection.tsCode),
         trade_date: selection.tradeDate,
         analysts: getSelectedAnalysts(),
         research_depth: getSelectedResearchDepth(),
         llm_provider: "deepseek",
-        quick_model: "deepseek-v4-flash",
-        deep_model: "deepseek-v4-flash",
+        quick_model: reportModel,
+        deep_model: reportModel,
         force_refresh: forceRefresh,
       };
     }
@@ -1308,8 +1430,24 @@
         return;
       }
       const displayDate = snapshot?.trade_date || tradeDate;
-      stockName.textContent = profile.name;
-      stockMeta.textContent = `${tsCode} · ${profile.sector} · ${profile.board} · ${displayDate}`;
+      const fromApi = snapshot && snapshot.name && String(snapshot.name).trim();
+      if (fromApi) cacheStockDisplayName(tsCode, fromApi);
+      let displayName =
+        (fromApi || "").trim() ||
+        (profile.name && profile.name !== tsCode ? profile.name : "");
+      if (displayName && displayName !== tsCode) {
+        stockName.textContent = displayName;
+      } else {
+        stockName.textContent = tsCode;
+        fetchStockNameFromApi(tsCode).then((n) => {
+          const still = parseStockInput(stockCodeInput.value);
+          if (n && still === tsCode) {
+            stockName.textContent = n;
+            normalizeStockInputField();
+          }
+        });
+      }
+      stockMeta.textContent = `${tsCode} · ${formatBoardShort(profile.board)} · ${displayDate}`;
 
       if (!snapshot) return;
       if (!Number.isFinite(Number(snapshot.price?.close))) {
@@ -1381,24 +1519,68 @@
       return normalizeLoose(firstLines) || "等待报告";
     }
 
+    function parseMarkdownTableRow(line) {
+      return line
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((cell) => cell.trim());
+    }
+
+    function isMarkdownTableSeparator(line) {
+      const cells = parseMarkdownTableRow(line);
+      return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+    }
+
+    function isMarkdownTableRow(line) {
+      return /^\s*\|.+\|\s*$/.test(line || "");
+    }
+
+    function stripFencedCodeBlocks(text) {
+      return String(text || "").replace(/```[\s\S]*?```/g, "\n");
+    }
+
+    function isPanelStructuralJunk(line) {
+      const t = String(line || "").trim();
+      if (!t) return true;
+      if (/^#{1,6}\s/.test(t)) return true;
+      if (/^[-*_]{3,}\s*$/.test(t)) return true;
+      if (isMarkdownTableSeparator(t)) return true;
+      if (isMarkdownTableRow(t)) return true;
+      if (/^\|.+\|\s*$/.test(t) && (t.match(/\|/g) || []).length >= 2) return true;
+      if (/^\s*\|?\s*:?-{4,}:?\s*(\|\s*:?-{4,}:?\s*)+\|?\s*$/.test(t)) return true;
+      return false;
+    }
+
     const REASON_FLUFF_RE =
-      /^(?:好的[,，]|作为投资组合经理|我已审阅|我将综合|现在[,，]|精彩辩论|本轮关于|最终交易决策|###\s*最终)/;
+      /^(?:好的[,，]|作为投资组合经理|我已审阅|我将综合|现在[,，]|精彩辩论|本轮关于|最终交易决策|投资组合经理|#+\s*)/;
 
     function extractDecisionReasons(text) {
-      const raw = String(text || "");
+      const raw = stripFencedCodeBlocks(String(text || ""));
       const sumBlock = raw.match(
-        /\*\*\s*(?:Executive\s+Summary|执行摘要)\s*\*\*\s*:\s*([\s\S]+?)(?=^\*\*\s*(?:Investment|执行|Thesis|投资论据|Price|Time|价格|时间)/im)
+        /\*\*\s*(?:Executive\s+Summary|执行摘要)\s*\*\*\s*:\s*([\s\S]+?)(?=\n\*\*\s*(?:Investment\s+Thesis|执行|Thesis|投资论据|Price|Time|价格|时间)|\s*$)/i,
       );
       let candidate = (sumBlock ? sumBlock[1] : raw).trim();
 
-      const sentences = candidate
+      const pieces = candidate
         .replace(/\*\*/g, "")
         .split(/(?:[。．；;]\s*|\n+)/)
         .map((s) => s.replace(/^[-*\d#.、]+\s*/, "").trim())
-        .filter((s) => s.length >= 18 && !REASON_FLUFF_RE.test(s));
+        .filter((s) => s.length >= 16 && !REASON_FLUFF_RE.test(s) && !isPanelStructuralJunk(s));
 
-      let picked = sentences.slice(0, 5);
-      if (picked.length < 2 && raw.length > 0) {
+      const deduped = [];
+      const seen = new Set();
+      for (const s of pieces) {
+        const key = s.slice(0, 48).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(s);
+        if (deduped.length >= 5) break;
+      }
+
+      let picked = deduped;
+      if (picked.length < 3 && raw.length > 0) {
         const lines = raw
           .split(/\n+/)
           .map((line) =>
@@ -1407,29 +1589,68 @@
               .replace(/\*\*/g, "")
               .trim(),
           )
-          .filter((line) => line.length >= 18 && !/^#{1,3}\s/.test(line) && !REASON_FLUFF_RE.test(line));
-        picked = [...new Set([...picked, ...lines])].slice(0, 5);
+          .filter(
+            (line) =>
+              line.length >= 16 &&
+              !/^#{1,6}\s/.test(line) &&
+              !REASON_FLUFF_RE.test(line) &&
+              !isPanelStructuralJunk(line),
+          );
+        for (const line of lines) {
+          const key = line.slice(0, 48).toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          picked.push(line);
+          if (picked.length >= 5) break;
+        }
       }
 
-      return picked.map((s) => (s.length > 220 ? `${s.slice(0, 217)}…` : s));
+      return picked.slice(0, 5).map((s) => (s.length > 200 ? `${s.slice(0, 197)}…` : s));
+    }
+
+    const RISK_HINT_RE =
+      /止损|风险|下行|跌破|回撤|清仓|减仓|流动性|估值|煤价|负债|现金流|风险提示|风险警示|风险点|不确定性|波动|安全边际|赔率|叙事|透支|触发|利空|高估|监管|违约|解禁|质押|业绩|商誉/i;
+
+    function tableRowToRiskShortLine(line) {
+      if (!isMarkdownTableRow(line)) return "";
+      const cells = parseMarkdownTableRow(line).filter(Boolean);
+      if (cells.length < 2) return "";
+      const joined = cells.join("：").replace(/\*\*/g, "").trim();
+      if (!RISK_HINT_RE.test(joined)) return "";
+      return joined.length > 160 ? `${joined.slice(0, 157)}…` : joined;
     }
 
     function extractRiskSentences(reportText) {
-      const raw = String(reportText || "");
+      const raw = stripFencedCodeBlocks(String(reportText || ""));
       const thesisBlock = raw.match(
         /\*\*\s*(?:Investment\s+Thesis|投资论据|投资论点)\s*\*\*\s*:\s*([\s\S]+)/im,
       );
       const pool = (thesisBlock ? thesisBlock[1] : raw).replace(/\*\*/g, "");
-      const parts = pool.split(/(?<=[。．；;])\s+/).map((s) => s.trim());
-      const hit = parts.filter(
-        (s) =>
-          s.length >= 12 &&
-          /止损|风险|下行|跌破|回撤|清仓|减仓|高估|安全边际|赔率|叙事|透支|触发|利空|波动|流动性/i.test(s),
-      );
-      const out = [...new Set(hit)].slice(0, 4);
-      if (out.length) return out.map((s) => (s.length > 240 ? `${s.slice(0, 237)}…` : s));
-      const fb = extractDecisionReasons(raw).slice(0, 1);
-      return fb.length ? [`若执行与研报不一致：以组合经理正文中的评级与操作建议为准。\n摘录：${fb[0]}`] : [];
+      const chunks = [];
+      for (const para of pool.split(/\n\s*\n/)) {
+        for (const piece of para.split(/(?<=[。．；;])\s+|\n+/)) {
+          const t = piece.replace(/^[-*•\d.)、]+\s*/, "").trim();
+          if (t.length < 14) continue;
+          if (isPanelStructuralJunk(t)) {
+            const short = tableRowToRiskShortLine(t);
+            if (short) chunks.push(short);
+            continue;
+          }
+          if (/^#{1,6}\s/.test(t)) continue;
+          if (RISK_HINT_RE.test(t)) chunks.push(t);
+        }
+      }
+
+      const out = [];
+      const seen = new Set();
+      for (const s of chunks) {
+        const key = s.slice(0, 56).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(s.length > 200 ? `${s.slice(0, 197)}…` : s);
+        if (out.length >= 6) break;
+      }
+      return out;
     }
 
     function updateDecisionPanel(finalDecision, decision) {
@@ -1438,7 +1659,11 @@
         decisionConfidence.textContent = "等待组合经理输出";
         decisionBar.style.width = "0%";
         decisionReasons.innerHTML = "<div>最终决策生成后，将在这里展示核心理由。</div>";
-        decisionRisk.textContent = "组合经理最终决策生成后，将在这里展示主要风险。";
+        decisionRisk.innerHTML = "";
+        const p0 = document.createElement("p");
+        p0.className = "risk-empty";
+        p0.textContent = "组合经理最终决策生成后，将在这里展示主要风险。";
+        decisionRisk.appendChild(p0);
         return;
       }
 
@@ -1459,18 +1684,48 @@
         decisionReasons.appendChild(item);
       });
 
-      decisionRisk.textContent =
-        riskLines.join("\n\n") ||
-        (finalDecision
-          ? "未在研报中抽到独立风险句式：请以正文中的触发条件、止损与仓位段落为准。"
-          : "组合经理最终决策生成后，将在这里展示主要风险。");
+      decisionRisk.innerHTML = "";
+      if (riskLines.length) {
+        const ul = document.createElement("ul");
+        ul.className = "risk-bullets";
+        riskLines.forEach((line) => {
+          const li = document.createElement("li");
+          li.textContent = line;
+          ul.appendChild(li);
+        });
+        decisionRisk.appendChild(ul);
+      } else if (finalDecision) {
+        const p = document.createElement("p");
+        p.className = "risk-empty";
+        p.textContent = "报告中未提取到明确风险提示，请查看完整交易报告。";
+        decisionRisk.appendChild(p);
+      } else {
+        const p = document.createElement("p");
+        p.className = "risk-empty";
+        p.textContent = "组合经理最终决策生成后，将在这里展示主要风险。";
+        decisionRisk.appendChild(p);
+      }
     }
 
     function syncDecisionPanelFromFinalReport(decision) {
       const finalDecision = reportSections.final_trade_decision || "";
-      if (finalDecision || decision) {
-        updateDecisionPanel(finalDecision, decision);
+      let dec = lastKnownPmDecision;
+      if (decision !== undefined) {
+        dec = decision;
+        if (dec) lastKnownPmDecision = String(dec);
       }
+      if (finalDecision || dec) {
+        updateDecisionPanel(finalDecision, dec || "");
+      }
+    }
+
+    function refreshDecisionPanelFromStoredFinal(decision) {
+      const hasFinal = String(reportSections.final_trade_decision || "").trim().length > 0;
+      if (hasFinal || lastKnownPmDecision) {
+        syncDecisionPanelFromFinalReport(decision !== undefined ? decision : undefined);
+        return true;
+      }
+      return false;
     }
 
     function escapeHtml(value) {
@@ -1485,24 +1740,6 @@
       return escapeHtml(value)
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.+?)\*/g, "<em>$1</em>");
-    }
-
-    function parseMarkdownTableRow(line) {
-      return line
-        .trim()
-        .replace(/^\|/, "")
-        .replace(/\|$/, "")
-        .split("|")
-        .map((cell) => cell.trim());
-    }
-
-    function isMarkdownTableSeparator(line) {
-      const cells = parseMarkdownTableRow(line);
-      return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
-    }
-
-    function isMarkdownTableRow(line) {
-      return /^\s*\|.+\|\s*$/.test(line || "");
     }
 
     function renderMarkdownTable(rows) {
@@ -1576,9 +1813,11 @@
       const title = reportSectionTitles[section] || "报告";
       reportTitle.textContent = title;
       reportViewer.innerHTML = `<h4>${title}</h4>${renderMarkdownDocument(reportSections[section])}`;
+      syncDecisionPanelFromFinalReport();
     }
 
     function resetReportSummary() {
+      lastKnownPmDecision = "";
       Object.keys(reportSections).forEach((key) => delete reportSections[key]);
       showReportSection("final_trade_decision");
     }
@@ -1767,6 +2006,7 @@
 
       currentEventSource.addEventListener("task_started", () => {
         statusPill.textContent = "分析中";
+        lastKnownPmDecision = "";
         updateDecisionPanel("", "");
         runHint.textContent = "真实 TradingAgents 分析已启动，正在等待 agent 输出...";
       });
@@ -1860,7 +2100,12 @@
 
       try {
         await loadHealth();
-        await loadSnapshot(payload.ts_code, payload.trade_date);
+        const snapshot = await loadSnapshot(payload.ts_code, payload.trade_date);
+        if (snapshot?.name) payload.stock_name = String(snapshot.name).trim();
+        if (!payload.stock_name || payload.stock_name === payload.ts_code) {
+          const apiName = await fetchStockNameFromApi(payload.ts_code);
+          if (apiName) payload.stock_name = apiName;
+        }
         const task = await createAnalysis(payload);
         if (!task.task_id) {
           throw new Error("analysis task id missing");
@@ -1912,6 +2157,9 @@
       runHint.textContent = "已切换交易日，请点击开始分析生成新的 TradingAgents 报告。";
     });
 
+    const PARAM_CHANGE_PM_HINT =
+      "参数已修改；当前右侧仍展示上次完成的组合经理决策，点击开始分析后生成新报告。";
+
     analystChips.forEach((chip) => {
       chip.addEventListener("click", () => {
         const willSelect = !chip.classList.contains("selected");
@@ -1925,8 +2173,11 @@
         currentTaskId = null;
         saveWorkspaceState(null, buildAnalysisPayload(false), "draft");
         statusPill.textContent = "待分析";
-        updateDecisionPanel("", "");
-        runHint.textContent = `已选择 ${getSelectedAnalysts().length} 个分析师团队，请点击开始分析。`;
+        if (refreshDecisionPanelFromStoredFinal()) {
+          runHint.textContent = PARAM_CHANGE_PM_HINT;
+        } else {
+          runHint.textContent = `已选择 ${getSelectedAnalysts().length} 个分析师团队，请点击开始分析。`;
+        }
       });
     });
 
@@ -1940,8 +2191,24 @@
         currentTaskId = null;
         saveWorkspaceState(null, buildAnalysisPayload(false), "draft");
         statusPill.textContent = "待分析";
-        updateDecisionPanel("", "");
-        runHint.textContent = `研究深度已切换为${segment.textContent}，请点击开始分析。`;
+        if (refreshDecisionPanelFromStoredFinal()) {
+          runHint.textContent = PARAM_CHANGE_PM_HINT;
+        } else {
+          runHint.textContent = `研究深度已切换为${segment.textContent}，请点击开始分析。`;
+        }
+      });
+    });
+
+    reportModelSegments.forEach((segment) => {
+      segment.addEventListener("click", () => {
+        const model = segment.dataset.reportModel;
+        if (!model) return;
+        localStorage.setItem(REPORT_MODEL_STORAGE_KEY, model);
+        restoreReportModelUI();
+        currentTaskId = null;
+        saveWorkspaceState(null, buildAnalysisPayload(false), "draft");
+        statusPill.textContent = "待分析";
+        runHint.textContent = `报告分析模型已切换为 ${segment.textContent}，点击开始分析后生效。`;
       });
     });
 
@@ -1970,6 +2237,50 @@
           return;
         }
         runHint.textContent = "未能加载 URL 中的 task_id（可能尚在注册），以下为默认恢复逻辑。";
+      }
+
+      const tsPrefill = params.get("ts_code")?.trim();
+      const tdPrefill = params.get("trade_date")?.trim();
+      const namePrefill = params.get("stock_name")?.trim();
+      const sourceHint = params.get("source")?.trim();
+      if (tsPrefill) {
+        stockCodeInput.value = tsPrefill.toUpperCase();
+        if (tdPrefill) tradeDateInput.value = tdPrefill;
+        const prefillCode = parseStockInput(stockCodeInput.value);
+        if (prefillCode && namePrefill) cacheStockDisplayName(prefillCode, namePrefill);
+        normalizeStockInputField();
+        const { tsCode, tradeDate } = getCurrentSelection();
+        if (!tsCode) {
+          runHint.textContent = "链接中的 ts_code 无效，已忽略预填。";
+          try {
+            history.replaceState({}, document.title, window.location.pathname || "/");
+          } catch (_) {
+            /* ignore */
+          }
+          return;
+        }
+        currentTaskId = null;
+        resetReportSummary();
+        saveWorkspaceState(null, buildAnalysisPayload(false), "draft");
+        statusPill.textContent = "待分析";
+        setAnalysisButtonsDisabled(false, "开始分析");
+        runHint.textContent =
+          sourceHint === "hot-radar"
+            ? "已从热榜带入股票与交易日，请确认分析师团队与研究深度后点击开始分析。"
+            : "已根据链接预填股票与交易日，请点击开始分析。";
+        try {
+          await loadSnapshot(tsCode, tradeDate);
+        } catch (_) {
+          updateSelectedStockView();
+        }
+        updateDecisionPanel("", "");
+        showReportSection("final_trade_decision");
+        try {
+          history.replaceState({}, document.title, window.location.pathname || "/");
+        } catch (_) {
+          /* ignore */
+        }
+        return;
       }
 
       let latestStatus = null;
@@ -2069,6 +2380,7 @@
       exportFullReportMarkdown();
     });
 
+    restoreReportModelUI();
     restoreWorkspaceState();
 
     document.querySelector("#open-chat").addEventListener("click", () => {

@@ -23,12 +23,17 @@ class RecordingSkill:
 
 
 class FakeChatLLM:
+    provider = "deepseek"
+
     def __init__(
         self,
         response: str = "LLM 结合 600519.SH 的上下文生成的个性化回答",
     ) -> None:
         self.response = response
         self.calls = []
+
+    def model_for(self, expert_mode: bool = False) -> str:
+        return "deepseek-v4-pro" if expert_mode else "deepseek-v4-flash"
 
     def answer(self, *, task, message, skill_result, expert_mode=False, conversation_history=None):
         self.calls.append(

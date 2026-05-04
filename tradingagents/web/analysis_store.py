@@ -70,8 +70,13 @@ class AnalysisStore:
             result = connection.execute(statement)
         return bool(result.rowcount)
 
-    def history(self, limit: int = 50) -> list[dict[str, Any]]:
-        statement = select(self.tasks).order_by(self.tasks.c.updated_at.desc()).limit(limit)
+    def history(self, limit: int = 50, status: str | None = None) -> list[dict[str, Any]]:
+        cap = max(1, min(int(limit), 200))
+        statement = select(self.tasks)
+        st = str(status or "").strip()
+        if st:
+            statement = statement.where(self.tasks.c.status == st)
+        statement = statement.order_by(self.tasks.c.updated_at.desc()).limit(cap)
         with self.engine.connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return [self._decode_row(row) for row in rows]

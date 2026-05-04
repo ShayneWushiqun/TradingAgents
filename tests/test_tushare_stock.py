@@ -88,6 +88,60 @@ class FakeWeekendTushareClient:
         )
 
 
+class FakeNamedTushareClient(FakeWeekendTushareClient):
+    def daily(self, **kwargs):
+        assert kwargs["ts_code"] == "600186.SH"
+        if "trade_date" in kwargs:
+            return pd.DataFrame(
+                [
+                    {
+                        "ts_code": "600186.SH",
+                        "trade_date": "20260430",
+                        "open": 10.2,
+                        "high": 11.0,
+                        "low": 10.1,
+                        "close": 10.72,
+                        "pre_close": 10.82,
+                        "pct_chg": -0.92,
+                        "amount": 5285000.0,
+                    }
+                ]
+            )
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "600186.SH",
+                    "trade_date": "20260430",
+                    "open": 10.2,
+                    "high": 11.0,
+                    "low": 10.1,
+                    "close": 10.72,
+                    "pre_close": 10.82,
+                    "pct_chg": -0.92,
+                    "amount": 5285000.0,
+                }
+            ]
+        )
+
+    def daily_basic(self, **kwargs):
+        assert kwargs["ts_code"] == "600186.SH"
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "600186.SH",
+                    "trade_date": "20260430",
+                    "pe_ttm": 54.66,
+                    "pb": 3.1,
+                    "total_mv": 1922000.0,
+                }
+            ]
+        )
+
+    def stock_basic(self, **kwargs):
+        assert kwargs["ts_code"] == "600186.SH"
+        return pd.DataFrame([{"ts_code": "600186.SH", "name": "莲花控股"}])
+
+
 def test_get_stock_snapshot_normalizes_tushare_rows():
     snapshot = get_stock_snapshot(
         "600519.SH",
@@ -96,6 +150,7 @@ def test_get_stock_snapshot_normalizes_tushare_rows():
     )
 
     assert snapshot["ts_code"] == "600519.SH"
+    assert snapshot["name"] == ""
     assert snapshot["trade_date"] == "2026-04-30"
     assert snapshot["price"]["close"] == 1684.2
     assert snapshot["price"]["pct_chg"] == 1.82
@@ -118,3 +173,13 @@ def test_get_stock_snapshot_falls_back_to_latest_trading_day():
     assert snapshot["is_fallback"] is True
     assert snapshot["price"]["close"] == 5.9
     assert snapshot["daily_basic"]["pe_ttm"] == 38.6151
+
+
+def test_get_stock_snapshot_resolves_name_from_stock_basic_when_daily_lacks_name():
+    snapshot = get_stock_snapshot(
+        "600186.SH",
+        "2026-04-30",
+        client=FakeNamedTushareClient(),
+    )
+
+    assert snapshot["name"] == "莲花控股"

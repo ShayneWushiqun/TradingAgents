@@ -554,4 +554,4 @@ def _model_for_chat_llm(chat_llm: ChatLLM, expert_mode: bool) -> str:
     model_for = getattr(chat_llm, "model_for", None)
     if callable(model_for):
         return str(model_for(expert_mode))
-    return "deepseek-v4-pro" if expert_mode else "deepseek-v4-flash"
+    return "deepseek-v4-flash"

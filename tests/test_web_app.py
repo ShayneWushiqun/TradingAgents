@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 
 from tradingagents.web.app import create_app
+from tradingagents.web.chat_service import ChatLLMUnavailable, DeepSeekChatLLM
+from tradingagents.web.schemas import AnalysisRequest
 
 
 def test_health_reports_tushare_configuration(monkeypatch):
@@ -77,8 +79,8 @@ def test_create_analysis_task_returns_task_id(monkeypatch):
             "analysts": ["market", "fundamentals"],
             "research_depth": 1,
             "llm_provider": "deepseek",
-            "quick_model": "deepseek-v4-flash",
-            "deep_model": "deepseek-v4-flash",
+            "quick_model": "deepseek-v4-pro",
+            "deep_model": "deepseek-v4-pro",
         },
     )
 
@@ -113,6 +115,118 @@ def test_create_analysis_accepts_suffixless_a_share_code(monkeypatch, tmp_path):
     assert body["request"]["research_depth"] == 3
 
 
+def test_create_analysis_enriches_missing_stock_name(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+    monkeypatch.setattr(
+        "tradingagents.web.analysis_service.resolve_stock_name",
+        lambda ts_code: "莲花控股" if ts_code == "600186.SH" else "",
+    )
+
+    def fake_runner(request, config, emit):
+        return ({"final_trade_decision": f"Rating: Hold\n{request.stock_name}"}, "Hold")
+
+    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path))
+
+    created = client.post(
+        "/api/analysis",
+        json={
+            "ts_code": "600186.SH",
+            "trade_date": "2026-04-30",
+            "analysts": ["market"],
+            "research_depth": 3,
+        },
+    ).json()
+    response = client.get(f"/api/analysis/{created['task_id']}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["request"]["stock_name"] == "莲花控股"
+    assert body["final_decision"] == "Rating: Hold\n莲花控股"
+
+
+def test_analysis_queue_endpoint_reports_lanes(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+
+    client = TestClient(create_app(runtime_dir=tmp_path))
+    service = client.app.state.analysis_service
+    task = service.registry.create(AnalysisRequest(ts_code="600519.SH", trade_date="2026-04-30"))
+    service.registry.start(task.task_id)
+
+    response = client.get("/api/analysis/queue")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["lanes"]["pro"]["capacity"] == 1
+    assert body["lanes"]["flash"]["capacity"] == 3
+    rows = (
+        body["lanes"]["pro"]["running"]
+        + body["lanes"]["pro"]["queued"]
+        + body["lanes"]["pro"]["finished"]
+    )
+    assert task.task_id in {row["task_id"] for row in rows}
+
+
+def test_analysis_queue_endpoint_is_not_shadowed_by_task_route(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+
+    client = TestClient(
+        create_app(
+            analysis_runner=lambda request, config, emit: ({"final_trade_decision": "Rating: Hold"}, "Hold"),
+            runtime_dir=tmp_path,
+        )
+    )
+
+    response = client.get("/api/analysis/queue")
+
+    assert response.status_code == 200
+    assert response.json()["lanes"]["pro"]["capacity"] == 1
+
+
+def test_analysis_history_status_completed_excludes_running_queue_items(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+
+    client = TestClient(create_app(runtime_dir=tmp_path))
+    service = client.app.state.analysis_service
+    running = service.registry.create(AnalysisRequest(ts_code="600001.SH", trade_date="2026-04-30"))
+    service.registry.start(running.task_id)
+    completed = service.registry.create(AnalysisRequest(ts_code="600002.SH", trade_date="2026-04-30"))
+    service.registry.complete(completed.task_id, {"final_trade_decision": "Rating: Hold"}, "Hold")
+
+    response = client.get("/api/analysis/history?status=completed")
+
+    assert response.status_code == 200
+    task_ids = {row["task_id"] for row in response.json()["items"]}
+    assert completed.task_id in task_ids
+    assert running.task_id not in task_ids
+
+
+def test_queue_delete_does_not_delete_completed_history(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+
+    def fake_runner(request, config, emit):
+        return ({"final_trade_decision": "Rating: Hold"}, "Hold")
+
+    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path))
+    created = client.post(
+        "/api/analysis",
+        json={"ts_code": "600519.SH", "trade_date": "2026-04-30"},
+    ).json()
+
+    response = client.delete(f"/api/analysis/queue/{created['task_id']}")
+    history = client.get("/api/analysis/history").json()
+    queue = client.get("/api/analysis/queue").json()
+
+    assert response.status_code == 200
+    assert response.json()["removed_from_queue"] is True
+    assert any(row["task_id"] == created["task_id"] for row in history["items"])
+    assert created["task_id"] not in {
+        row["task_id"]
+        for lane in queue["lanes"].values()
+        for group in ("running", "queued", "finished")
+        for row in lane[group]
+    }
+
+
 def test_web_analysis_uses_akshare_tavily_tushare_news_priority(monkeypatch, tmp_path):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
     captured_config = {}
@@ -130,6 +244,26 @@ def test_web_analysis_uses_akshare_tavily_tushare_news_priority(monkeypatch, tmp
 
     assert response.status_code == 200
     assert captured_config["data_vendors"]["news_data"] == "akshare,tavily,tushare"
+
+
+def test_web_analysis_defaults_to_deepseek_pro_for_standard_and_deep_models(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+    captured_config = {}
+
+    def fake_runner(request, config, emit):
+        captured_config.update(config)
+        return ({"final_trade_decision": "Rating: Hold"}, "Hold")
+
+    client = TestClient(create_app(analysis_runner=fake_runner, runtime_dir=tmp_path))
+
+    response = client.post(
+        "/api/analysis",
+        json={"ts_code": "600519.SH", "trade_date": "2026-04-30"},
+    )
+
+    assert response.status_code == 200
+    assert captured_config["quick_think_llm"] == "deepseek-v4-pro"
+    assert captured_config["deep_think_llm"] == "deepseek-v4-pro"
 
 
 def test_web_analysis_runtime_files_stay_inside_project(monkeypatch, tmp_path):
@@ -155,6 +289,12 @@ def test_web_analysis_runtime_files_stay_inside_project(monkeypatch, tmp_path):
 
 def test_chat_endpoint_returns_contextual_reply(monkeypatch):
     monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+
+    def _chat_offline(self, **kwargs):
+        raise ChatLLMUnavailable("test: deterministic reply path")
+
+    monkeypatch.setattr(DeepSeekChatLLM, "answer", _chat_offline)
+
     client = TestClient(create_app())
     created = client.post(
         "/api/analysis",
@@ -164,8 +304,8 @@ def test_chat_endpoint_returns_contextual_reply(monkeypatch):
             "analysts": ["market", "fundamentals"],
             "research_depth": 1,
             "llm_provider": "deepseek",
-            "quick_model": "deepseek-v4-flash",
-            "deep_model": "deepseek-v4-flash",
+            "quick_model": "deepseek-v4-pro",
+            "deep_model": "deepseek-v4-pro",
         },
     ).json()
 
@@ -377,8 +517,8 @@ def test_analysis_endpoint_runs_task_and_exposes_status(monkeypatch, tmp_path):
             "analysts": ["market", "fundamentals"],
             "research_depth": 1,
             "llm_provider": "deepseek",
-            "quick_model": "deepseek-v4-flash",
-            "deep_model": "deepseek-v4-flash",
+            "quick_model": "deepseek-v4-pro",
+            "deep_model": "deepseek-v4-pro",
         },
     ).json()
 
@@ -989,6 +1129,22 @@ def test_hot_radar_api_runs_batch_and_returns_dashboard(monkeypatch, tmp_path):
     assert dashboard_default_batch["items"]["热股"][0]["ts_code"] == "000988.SZ"
 
 
+def test_hot_radar_run_rejects_unknown_report_models(monkeypatch, tmp_path):
+    monkeypatch.setenv("TUSHARE_API_TOKEN", "test-token")
+    client = TestClient(create_app(runtime_dir=tmp_path, enable_hot_radar_scheduler=False))
+    response = client.post(
+        "/api/hot-radar/run",
+        json={
+            "trade_date": "2026-04-30",
+            "batch_time": "daily",
+            "top_n": 10,
+            "quick_model": "gpt-4o",
+            "deep_model": "gpt-4o",
+        },
+    )
+    assert response.status_code == 422
+
+
 def test_hot_radar_fetch_snapshot_endpoint(monkeypatch, tmp_path):
     """fetch_if_missing=false stays DB-only; default GET pulls once into store; POST /fetch forces refresh."""
 
@@ -1034,11 +1190,17 @@ def test_hot_radar_fetch_snapshot_endpoint(monkeypatch, tmp_path):
             },
         }
 
+    cal_days = ["2026-06-07", "2026-06-05", "2026-04-30", "2026-04-29"]
+
+    def trade_dates_getter(end_date, limit):
+        end = end_date or "2099-12-31"
+        return [d for d in cal_days if d <= end][:limit]
+
     client = TestClient(
         create_app(
             runtime_dir=tmp_path,
             hot_snapshot_getter=fake_snapshot,
-            trade_dates_getter=lambda end_date, limit: ["2026-04-30", "2026-04-29"],
+            trade_dates_getter=trade_dates_getter,
             enable_hot_radar_scheduler=False,
         )
     )

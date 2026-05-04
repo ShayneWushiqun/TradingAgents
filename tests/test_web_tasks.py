@@ -11,10 +11,10 @@ def test_task_registry_creates_queued_task():
         ts_code="600519.SH",
         trade_date="2026-04-30",
         analysts=["market", "fundamentals"],
-        research_depth=1,
+        research_depth=3,
         llm_provider="deepseek",
-        quick_model="deepseek-v4-flash",
-        deep_model="deepseek-v4-flash",
+        quick_model="deepseek-v4-pro",
+        deep_model="deepseek-v4-pro",
     )
 
     task = registry.create(request)

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from tradingagents.web.analysis_store import AnalysisStore
 from tradingagents.web.schemas import AnalysisRequest
 from tradingagents.web.tasks import AnalysisTask
@@ -64,6 +66,31 @@ def test_analysis_store_persists_partial_report_sections_for_failed_task(tmp_pat
     assert latest["error"] == "provider interrupted"
     assert restored is not None
     assert restored["report_sections"]["market_report"] == "已生成技术面"
+
+
+def test_analysis_store_history_completed_not_masked_by_many_recent_queued(tmp_path):
+    """``status=completed`` must not be implemented as “recent N rows then filter”."""
+    store = AnalysisStore(f"sqlite:///{tmp_path / 'analysis.db'}")
+    base = datetime(2024, 1, 1)
+    done_req = AnalysisRequest(ts_code="600186.SH", trade_date="2026-05-03")
+    done_task = AnalysisTask(task_id="done-old", request=done_req)
+    done_task.status = "completed"
+    done_task.created_at = base
+    done_task.updated_at = base
+    store.upsert_task(done_task, cache_key="k-done")
+
+    for i in range(201):
+        request = AnalysisRequest(ts_code="600000.SH", trade_date="2026-05-01")
+        task = AnalysisTask(task_id=f"q-{i}", request=request)
+        task.status = "queued"
+        task.created_at = base + timedelta(seconds=i + 1)
+        task.updated_at = base + timedelta(seconds=i + 1)
+        store.upsert_task(task, cache_key=f"k-{i}")
+
+    completed_only = store.history(limit=10, status="completed")
+    assert len(completed_only) == 1
+    assert completed_only[0]["task_id"] == "done-old"
+    assert completed_only[0]["request"]["ts_code"] == "600186.SH"
 
 
 def test_analysis_store_deletes_task_by_id(tmp_path):

@@ -1,4 +1,6 @@
 from pathlib import Path
+import re
+import subprocess
 
 
 def test_a_share_workstation_prototype_exists_with_key_sections():
@@ -70,6 +72,11 @@ def test_a_share_workstation_prototype_exists_with_key_sections():
         "WORKSTATION_STATE_KEY",
         "saveWorkspaceState",
         "restoreWorkspaceState",
+        "tsPrefill",
+        'params.get("stock_name")',
+        "namePrefill",
+        "cacheStockDisplayName",
+        "replaceState",
         "restoreCachedAnalysis",
         "loadLatestAnalysis",
         "loadAnalysisStatus",
@@ -78,6 +85,11 @@ def test_a_share_workstation_prototype_exists_with_key_sections():
         "export-report-btn",
         "exportFullReportMarkdown",
         "/export.md",
+        "formatBoardShort",
+        "601991.SH",
+        "大唐发电",
+        "fetchStockNameFromApi",
+        "/api/stocks/",
     ]
 
     for label in required_labels:
@@ -93,6 +105,18 @@ def test_a_share_workstation_prototype_exists_with_key_sections():
     assert '<input class="field-box active" id="stock-code" list="stock-options" value=' not in html
 
 
+def test_hot_radar_analysis_link_passes_stock_name_to_workstation():
+    hot_html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
+    workstation_html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+
+    assert "stock_name" in hot_html
+    assert "data-analyze-name" in hot_html
+    assert "activeAnalysisModalRow.stockName" in hot_html
+    assert "stock_name: activeAnalysisModalRow.stockName" in hot_html
+    assert "params.get(\"stock_name\")" in workstation_html
+    assert "cacheStockDisplayName(prefillCode, namePrefill)" in workstation_html
+
+
 def test_workstation_layout_keeps_decision_panel_visible_on_wide_screens():
     html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
 
@@ -102,8 +126,44 @@ def test_workstation_layout_keeps_decision_panel_visible_on_wide_screens():
     assert ".workspace > aside:last-child" in html
     assert "position: sticky;" in html
     assert "align-self: start;" in html
-    assert "overflow-y: auto;" not in html
-    assert "max-height: calc(100vh - 120px);" not in html
+    decision_aside = re.search(r"\.workspace > aside:last-child \{([\s\S]+?)\n    \}", html)
+    assert decision_aside
+    assert "overflow-y: auto;" not in decision_aside.group(1)
+    assert "max-height: calc(100vh - 120px);" not in decision_aside.group(1)
+
+
+def test_workstation_inline_script_is_valid_javascript(tmp_path):
+    html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+    scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+    assert scripts
+
+    script_path = tmp_path / "a-share-workstation.js"
+    script_path.write_text("\n".join(scripts), encoding="utf-8")
+    result = subprocess.run(
+        ["node", "--check", str(script_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_workstation_uses_pro_model_for_standard_and_deep_analysis():
+    html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+
+    assert 'data-depth="1"' not in html
+    assert 'data-depth="3"' in html
+    assert 'data-depth="5"' in html
+    assert "报告分析模型" in html
+    assert "report-model-selector" in html
+    assert 'data-report-model="deepseek-v4-pro"' in html
+    assert 'data-report-model="deepseek-v4-flash"' in html
+    assert "restoreReportModelUI" in html
+    assert "reportModelSegments" in html
+    assert "REPORT_MODEL_STORAGE_KEY" in html
+    assert "TRADINGAGENTS_REPORT_MODEL" in html
+    assert "getSelectedReportModel" in html
 
 
 def test_agent_chat_page_exists_with_task_context_and_chat_controls():
@@ -135,7 +195,7 @@ def test_agent_chat_page_exists_with_task_context_and_chat_controls():
         "composer-toolbar",
         "mode-actions",
         "quick-mode-toggle",
-        "快速模式",
+        "标准模式",
         "smart-search-toggle",
         "smartSearch",
         "智能搜索",
@@ -204,7 +264,6 @@ def test_reports_page_exists_with_history_controls():
         "历史报告",
         "A-Share Insight",
         "/api/analysis/history",
-        "/api/analysis/restore",
         "DELETE",
         "删除记录",
         "载入报告",
@@ -212,10 +271,133 @@ def test_reports_page_exists_with_history_controls():
         "报告列表",
         "report-list",
         "refresh-reports",
+        "/api/analysis/history?status=completed",
+        "只展示已完成报告",
+        "暂无已完成历史报告",
+        'item.status === "completed"',
+        "openReportTask",
+        "?task_id=",
+        "formatReportCardTitle",
+        "resolveStockDisplayName",
+        "fetchStockDisplayName",
+        "hydrateReportNames",
+        "/api/stocks/",
+        "detail-name",
+        "item.request?.stock_name",
+        "REPORTS_HISTORY_CACHE_KEY",
+        "readCachedReportsSnapshot",
+        "writeCachedReportsSnapshot",
+        "slimReportForStorage",
+        "DB 为准",
     ]
 
     for label in required_labels:
         assert label in html
+
+    forbidden_labels = [
+        "RECENT_ANALYSIS_TASK_STORAGE_KEYS",
+        "TRADINGAGENTS_RECENT_ANALYSIS_TASKS",
+        "TRADINGAGENTS_HOT_RADAR_QUEUE_TASKS",
+        "loadLocalCompletedReports",
+        "readLocalAnalysisTaskSeeds",
+        "/api/analysis/restore",
+    ]
+    for label in forbidden_labels:
+        assert label not in html
+
+
+def test_analyze_payload_and_reports_use_task_stock_name():
+    workstation_html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+    reports_html = Path("docs/design/reports.html").read_text(encoding="utf-8")
+
+    assert "stock_name" in workstation_html
+    assert "getCurrentStockDisplayName" in workstation_html
+    assert "stock_name: getCurrentStockDisplayName(selection.tsCode)" in workstation_html
+    assert "item.request?.stock_name" in reports_html
+
+
+def test_reports_page_falls_back_to_completed_report_text_for_stock_name():
+    reports_html = Path("docs/design/reports.html").read_text(encoding="utf-8")
+
+    assert "extractStockNameFromText" in reports_html
+    assert "extractStockNameFromReport" in reports_html
+    assert "report_sections" in reports_html
+    assert "final_decision" in reports_html
+    assert "name = extractStockNameFromReport(next, ts)" in reports_html
+
+
+def test_reports_page_uses_local_snapshot_only_as_fast_first_paint():
+    reports_html = Path("docs/design/reports.html").read_text(encoding="utf-8")
+
+    assert "readCachedReportsSnapshot()" in reports_html
+    assert "renderReports(cachedItems, " in reports_html
+    assert "/api/analysis/history?status=completed" in reports_html
+    assert "writeCachedReportsSnapshot(hydrated)" in reports_html
+    assert "clearCachedReportsSnapshot()" in reports_html
+    assert "section_count" in reports_html
+    assert "report_sections" in reports_html
+    assert "本地快照" in reports_html
+    assert "正在刷新 DB" in reports_html
+
+
+def test_reports_page_offers_one_click_clear_all_completed():
+    """Reports「一键清空」 button + DELETE call to ``/api/analysis/history?status=completed``."""
+
+    reports_html = Path("docs/design/reports.html").read_text(encoding="utf-8")
+    assert 'id="clear-reports"' in reports_html
+    assert "一键清空" in reports_html
+    assert "clearAllReports" in reports_html
+    assert "/api/analysis/history?status=completed" in reports_html
+    assert 'method: "DELETE"' in reports_html
+
+
+def test_hot_radar_does_not_use_local_storage_for_task_state():
+    html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
+
+    assert "/api/analysis/queue" in html
+    assert "/api/analysis/history?limit=150" in html
+    assert "/api/analysis/history?status=completed" in html
+    for label in [
+        "HOT_RADAR_QUEUE_STORAGE_KEY",
+        "RECENT_ANALYSIS_TASK_STORAGE_KEY",
+        "readTrackedQueueSeeds",
+        "writeTrackedQueueSeeds",
+        "rememberHotRadarQueueTask",
+        "rememberRecentAnalysisTask",
+        "loadTrackedQueueTasks",
+        "forgetHotRadarQueueTask",
+    ]:
+        assert label not in html
+
+
+def test_hot_radar_uses_snapshot_cache_without_treating_it_as_task_truth():
+    html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
+
+    assert "HOT_RADAR_DASHBOARD_CACHE_PREFIX" in html
+    assert "HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY" in html
+    assert "readHotRadarDashboardSnapshot" in html
+    assert "writeHotRadarDashboardSnapshot" in html
+    assert "readCompletedHistorySnapshot" in html
+    assert "writeCompletedHistorySnapshot" in html
+    assert "showCachedDashboardFirstPaint" in html
+    assert "loadCompletedHistorySnapshot" in html
+    assert "本地快照" in html
+    assert "正在刷新后端数据" in html
+    assert "/api/hot-radar?trade_date=" in html
+    assert "/api/analysis/history?status=completed&limit=100" in html
+    assert "completedHistoryItems = incoming" in html
+
+
+def test_hot_radar_uses_inline_detail_popover_instead_of_native_help_cursor():
+    html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
+
+    assert "detail-popover" in html
+    assert "detailAttr(" in html
+    assert "showDetailPopover" in html
+    assert "data-detail" in html
+    assert "cursor: help" not in html
+    assert "titleAttr(" not in html
+    assert " title=" not in html
 
 
 def test_settings_page_exists_with_data_and_model_status():
@@ -234,10 +416,23 @@ def test_settings_page_exists_with_data_and_model_status():
         "akshare,tavily,tushare",
         "DeepSeek",
         "health-status",
+        "deepseek-v4-flash",
     ]
 
     for label in required_labels:
         assert label in html
+
+    """Report-model picker has moved into per-row analysis modals; settings page must not host it any more."""
+    forbidden_in_settings = [
+        "report-model-segmented",
+        "report-model-card",
+        "restoreReportModelUI",
+        "TRADINGAGENTS_REPORT_MODEL",
+        "id=\"report-model-pro\"",
+        "id=\"report-model-flash\"",
+    ]
+    for label in forbidden_in_settings:
+        assert label not in html
 
 
 def test_workstation_restores_backend_latest_before_local_browser_state():
@@ -249,12 +444,17 @@ def test_workstation_restores_backend_latest_before_local_browser_state():
     assert "let latestStatus = null;" in restore_body
     assert restore_body.index("await loadLatestAnalysis()") < restore_body.index("readWorkspaceState()")
     assert "已恢复最新分析" in restore_body
+    assert "params.get(\"ts_code\")" in restore_body
+    assert 'params.get("stock_name")' in restore_body
+    assert restore_body.index("tsPrefill") < restore_body.index("await loadLatestAnalysis()")
+    assert "已从热榜带入股票与交易日" in restore_body
+    assert "待分析" in restore_body
 
 
 def test_decision_signal_parser_prioritizes_structured_underweight_rating():
     html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
     parser_start = html.index("function extractDecisionSignal")
-    parser_end = html.index("function extractDecisionReasons", parser_start)
+    parser_end = html.index("function parseMarkdownTableRow", parser_start)
     parser_body = html[parser_start:parser_end]
 
     assert "structuredMatch" in parser_body
@@ -263,20 +463,129 @@ def test_decision_signal_parser_prioritizes_structured_underweight_rating():
     assert "source.includes(\"buy\")" not in parser_body
 
 
+def test_workstation_risk_panel_uses_list_and_filters_markdown_tables():
+    html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+
+    assert "报告中未提取到明确风险提示，请查看完整交易报告。" in html
+    assert "risk-bullets" in html
+    assert "function isPanelStructuralJunk" in html
+    risk_start = html.index("function extractRiskSentences")
+    risk_end = html.index("function updateDecisionPanel", risk_start)
+    risk_body = html[risk_start:risk_end]
+    assert "isPanelStructuralJunk" in risk_body
+    assert "tableRowToRiskShortLine" in risk_body
+
+    update_start = html.index("function updateDecisionPanel")
+    update_end = html.index("function syncDecisionPanelFromFinalReport", update_start)
+    update_body = html[update_start:update_end]
+    assert "decisionRisk.textContent" not in update_body
+    assert 'createElement("ul")' in update_body
+
+    panel_start = html.index(".risk-box {")
+    panel_end = html.index(".tabs {", panel_start)
+    risk_css = html[panel_start:panel_end]
+    assert "max-height: 220px" not in risk_css
+    assert ".risk-box .risk-bullets" in risk_css
+
+
+def test_workstation_decision_panel_not_cleared_by_analyst_or_depth_chips():
+    html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+
+    analyst_start = html.index("至少保留一个分析师团队。")
+    analyst_end = html.index("depthSegments.forEach", analyst_start)
+    analyst_block = html[analyst_start:analyst_end]
+    assert 'updateDecisionPanel("", "")' not in analyst_block
+    assert "refreshDecisionPanelFromStoredFinal" in analyst_block
+    assert "PARAM_CHANGE_PM_HINT" in analyst_block
+
+    depth_dom = "depthSegments.forEach((segment) => {"
+    depth_start = html.index(depth_dom, html.index(depth_dom) + 1)
+    depth_end = html.index("reportTabs.forEach", depth_start)
+    depth_block = html[depth_start:depth_end]
+    assert 'updateDecisionPanel("", "")' not in depth_block
+    assert "refreshDecisionPanelFromStoredFinal" in depth_block
+
+    show_start = html.index("function showReportSection")
+    show_end = html.index("function resetReportSummary", show_start)
+    show_body = html[show_start:show_end]
+    assert "syncDecisionPanelFromFinalReport();" in show_body
+
+    run_start = html.index("async function runAnalysis")
+    run_end = html.index("runButton.addEventListener", run_start)
+    run_body = html[run_start:run_end]
+    assert 'updateDecisionPanel("", "");' in run_body
+
+
+def test_workstation_risk_extractor_logic_rejects_table_separator_lines():
+    """Mirror key JS rules so Markdown table separator lines are never treated as risk text."""
+
+    import re
+
+    def parse_cells(line):
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+
+    def is_markdown_table_separator(line):
+        cells = parse_cells(line)
+        return len(cells) > 1 and all(re.fullmatch(r":?-{3,}:?", c) for c in cells)
+
+    assert is_markdown_table_separator("| --- | --- |")
+    assert is_markdown_table_separator("|:---|:---:|")
+    assert not is_markdown_table_separator("| 风险 | 说明 |")
+
+
 def test_hot_radar_calendar_sync_and_row_level_analysis_buttons():
     html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
 
+    assert "TRADINGAGENTS_REPORT_MODEL" in html
+    assert "getSelectedReportModel" in html
     assert 'class="hot-toolbar"' in html
     assert 'class="sync-latest-btn"' in html
     assert "基准日" in html
-    assert "calendarTodayLocal" in html
-    assert "force_refresh" in html
+    assert 'id="current-trade-date"' in html
+    assert "buildCalendarDateOptions" in html
+    assert "setTradeDateOptions(buildCalendarDateOptions(30))" in html
     assert "/api/hot-radar/trade-dates" not in html
-    assert "enqueueAnalyzeFromHotRadar" in html
+    assert "force_refresh" in html
+    assert "analysis-modal" in html
+    assert "openAnalysisModal" in html
+    assert "submitAnalysisModal" in html
+    assert "queue-overview" in html
+    assert "queue-panel" in html
+    assert html.count('id="queue-panel"') == 1
+    assert "loadAnalysisQueueFromHistory" in html
+    assert "mergeQueuePayloads" in html
+    assert "queueStatusLabel" in html
+    assert "hotRadarNameForCode" in html
+    assert "latestQueueApiAvailable" in html
+    assert "loadAnalysisQueue" in html
+    assert "renderAnalysisQueue(await loadAnalysisQueue())" in html
+    assert "/api/analysis/queue" in html
+    assert 'event.target.closest("[data-queue-action]")' in html
+    assert "组合经理：排队中" in html
+    assert "组合经理：停止中" in html
     assert "data-analyze-ts" in html
-    assert "/api/analysis" in html
-    assert "/api/analysis/history?limit=" in html
+    assert "data-analyze-name" in html
+    assert 'data-analyze-name="${escapeHtml(item.ts_name || "")}"' in html
+    assert 'getAttribute("data-analyze-name")' in html
+    assert 'origin: "hot_radar"' in html
+    assert 'fetch("/api/analysis",' in html
+    assert "/api/analysis/history?status=completed" in html
+    assert "completedReportByStock" in html
+    assert "hydrateCompletedReports" in html
+    assert "pickCompletedForRow" in html
+    assert "pickQueueTaskForRow" in html
+    assert "mergeCompletedTaskLocal" in html
+    assert "refreshHotRadarRowState" in html
+    assert "buildActiveQueueIndex" in html
+    assert "activeQueueByCodeDate" in html
+    assert "!== \"completed\"" in html
+    assert "组合经理：已完成" in html
     assert "portfolioManagerBrief" in html
+    assert 'data-analyze-force="1"' in html
+    assert "force_refresh: Boolean(activeAnalysisModalRow.forceRefresh)" in html
+    assert "fetch_if_missing=false" in html
+    assert "isoIsToday" in html
+    assert "calendarTodayLocal()" in html
     assert "手动触发批量分析" not in html
     assert "runHotRadarBatch" not in html
     assert "dedupeHotItems" in html

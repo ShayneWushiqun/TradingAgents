@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 from typing import Any, Callable
@@ -221,75 +221,55 @@ class HotRadarService:
     def trade_dates(self, end_date: str | None = None, limit: int = 30) -> list[str]:
         return self.trade_dates_getter(end_date, limit)
 
-    def get_dashboard(
-        self,
-        trade_date: str,
-        batch_time: str,
-        top_n: int = 20,
-        fetch_if_missing: bool = False,
-    ) -> dict[str, Any]:
-        """Load persisted dashboard. When ``fetch_if_missing`` and nothing is saved yet, pull ths_hot once."""
+    @staticmethod
+    def _dashboard_has_any_rows(saved: dict[str, Any]) -> bool:
+        items = saved.get("items") or {}
+        return any(bool(rows) for rows in items.values())
 
-        saved = self.store.load_dashboard(trade_date, batch_time)
-        if saved is not None:
-            return saved
-        if fetch_if_missing:
-            snapshot = self.hot_snapshot_getter(trade_date, top_n)
-            run_id = uuid4().hex
-            self.store.save_run(
-                run_id=run_id,
-                trade_date=trade_date,
-                batch_time=batch_time,
-                top_n=top_n,
-                status="hot_only",
-                items=snapshot.get("markets") or {},
-                analysis_tasks=[],
-            )
-            return self.store.load_dashboard(trade_date, batch_time) or {
-                "run": {"run_id": run_id, "trade_date": trade_date, "batch_time": batch_time, "status": "hot_only"},
-                "items": snapshot.get("markets") or {},
-                "analysis_tasks": [],
-            }
+    @staticmethod
+    def _snapshot_nonempty(snapshot: dict[str, Any]) -> bool:
+        markets = snapshot.get("markets") or {}
+        return any(bool(rows) for rows in markets.values())
+
+    @staticmethod
+    def _with_meta(body: dict[str, Any], requested: str, resolved: str) -> dict[str, Any]:
+        req = str(requested).strip()
+        res = str(resolved).strip()
         return {
-            "run": {
-                "run_id": "",
-                "trade_date": trade_date,
-                "batch_time": batch_time,
-                "top_n": top_n,
-                "status": "missing",
-                "error": "",
+            **body,
+            "meta": {
+                "requested_trade_date": req,
+                "resolved_trade_date": res,
+                "used_fallback": req != res,
             },
-            "items": {"热股": [], "ETF": [], "行业板块": [], "概念板块": []},
-            "analysis_tasks": [],
         }
 
-    def sync_hot_snapshot_from_source(
-        self,
-        trade_date: str,
-        batch_time: str,
-        top_n: int = 20,
-        *,
-        force_refresh: bool = True,
-    ) -> dict[str, Any]:
-        """Pull latest ths_hot and persist.
+    def _trade_date_chain(self, requested: str, *, limit: int = 30) -> list[str]:
+        """Calendar days on or before ``requested``, newest first.
 
-        ``force_refresh`` (default True): overwrite snapshot when forced from UI.
-        When False and a row already exists for (trade_date, batch_time), returns the stored dashboard
-        without calling Tushare (used for tolerant clients).
-
-        Completed / partial_failed runs only replace hot_radar_items so analysis_tasks stay intact.
-
-        Raises:
-            Same as underlying ``hot_snapshot_getter`` on network/data errors.
-
+        ths_hot can publish on non-trading days, so force-sync must try the calendar day first,
+        then walk back by natural day instead of relying on exchange trade calendars.
         """
 
-        saved = self.store.load_dashboard(trade_date, batch_time)
-        if not force_refresh and saved is not None:
-            return saved
+        td = str(requested).strip()
+        if not td:
+            return []
+        try:
+            start = datetime.strptime(td, "%Y-%m-%d")
+        except ValueError:
+            return [td]
+        capped = max(1, min(int(limit), 30))
+        return [(start - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(capped)]
 
-        snapshot = self.hot_snapshot_getter(trade_date, top_n)
-        items = snapshot.get("markets") or {}
+    def _persist_snapshot(
+        self,
+        *,
+        trade_date: str,
+        batch_time: str,
+        top_n: int,
+        items: dict[str, list[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        saved = self.store.load_dashboard(trade_date, batch_time)
 
         if saved is None:
             run_id = uuid4().hex
@@ -314,9 +294,9 @@ class HotRadarService:
         status = run.get("status") or ""
 
         if not run_id:
-            rid = uuid4().hex
+            run_id = uuid4().hex
             self.store.save_run(
-                run_id=rid,
+                run_id=run_id,
                 trade_date=trade_date,
                 batch_time=batch_time,
                 top_n=top_n,
@@ -325,15 +305,14 @@ class HotRadarService:
                 analysis_tasks=[],
             )
             return self.store.load_dashboard(trade_date, batch_time) or {
-                "run": {"run_id": rid, "trade_date": trade_date, "batch_time": batch_time, "status": "hot_only"},
+                "run": {"run_id": run_id, "trade_date": trade_date, "batch_time": batch_time, "status": "hot_only"},
                 "items": items,
                 "analysis_tasks": [],
             }
 
         if status in {"completed", "partial_failed"} or len(tasks) > 0:
             self.store.replace_snapshot_items_only(run_id, items)
-            loaded = self.store.load_dashboard(trade_date, batch_time)
-            return loaded or saved
+            return self.store.load_dashboard(trade_date, batch_time) or saved
 
         self.store.save_run(
             run_id=run_id,
@@ -350,7 +329,127 @@ class HotRadarService:
             "analysis_tasks": [],
         }
 
-    def run_batch(self, trade_date: str, batch_time: str, top_n: int = 20) -> dict[str, Any]:
+    def get_dashboard(
+        self,
+        trade_date: str,
+        batch_time: str,
+        top_n: int = 20,
+        fetch_if_missing: bool = False,
+    ) -> dict[str, Any]:
+        """Load persisted dashboard, walking back open days until a non-empty snapshot exists.
+
+        When ``fetch_if_missing`` and nothing usable is stored, calls ``hot_snapshot_getter`` for each
+        candidate day (newest first) until Tushare returns at least one row in any market.
+
+        Response always includes ``meta``: ``requested_trade_date``, ``resolved_trade_date``, ``used_fallback``.
+        """
+
+        requested = str(trade_date).strip()
+        chain = self._trade_date_chain(requested)
+
+        for d in chain:
+            saved = self.store.load_dashboard(d, batch_time)
+            if saved is not None and self._dashboard_has_any_rows(saved):
+                return self._with_meta(saved, requested, d)
+
+        if fetch_if_missing:
+            for d in chain:
+                snapshot = self.hot_snapshot_getter(d, top_n)
+                if not self._snapshot_nonempty(snapshot):
+                    continue
+                run_id = uuid4().hex
+                self.store.save_run(
+                    run_id=run_id,
+                    trade_date=d,
+                    batch_time=batch_time,
+                    top_n=top_n,
+                    status="hot_only",
+                    items=snapshot.get("markets") or {},
+                    analysis_tasks=[],
+                )
+                loaded = self.store.load_dashboard(d, batch_time) or {
+                    "run": {"run_id": run_id, "trade_date": d, "batch_time": batch_time, "status": "hot_only"},
+                    "items": snapshot.get("markets") or {},
+                    "analysis_tasks": [],
+                }
+                return self._with_meta(loaded, requested, d)
+
+        missing = {
+            "run": {
+                "run_id": "",
+                "trade_date": requested,
+                "batch_time": batch_time,
+                "top_n": top_n,
+                "status": "missing",
+                "error": "",
+            },
+            "items": {"热股": [], "ETF": [], "行业板块": [], "概念板块": []},
+            "analysis_tasks": [],
+        }
+        return self._with_meta(missing, requested, requested)
+
+    def sync_hot_snapshot_from_source(
+        self,
+        trade_date: str,
+        batch_time: str,
+        top_n: int = 20,
+        *,
+        force_refresh: bool = True,
+    ) -> dict[str, Any]:
+        """Pull latest ths_hot and persist.
+
+        ``force_refresh`` (default True): overwrite snapshot when forced from UI.
+        When False and a row already exists for (trade_date, batch_time), returns the stored dashboard
+        without calling Tushare (used for tolerant clients).
+
+        Completed / partial_failed runs only replace hot_radar_items so analysis_tasks stay intact.
+
+        Raises:
+            Same as underlying ``hot_snapshot_getter`` on network/data errors.
+
+        """
+
+        saved = self.store.load_dashboard(trade_date, batch_time)
+        if not force_refresh and saved is not None:
+            return self._with_meta(saved, trade_date, trade_date)
+
+        requested = str(trade_date).strip()
+        for candidate in self._trade_date_chain(requested, limit=30):
+            snapshot = self.hot_snapshot_getter(candidate, top_n)
+            if not self._snapshot_nonempty(snapshot):
+                continue
+            items = snapshot.get("markets") or {}
+            persisted = self._persist_snapshot(
+                trade_date=candidate,
+                batch_time=batch_time,
+                top_n=top_n,
+                items=items,
+            )
+            return self._with_meta(persisted, requested, candidate)
+
+        missing = {
+            "run": {
+                "run_id": "",
+                "trade_date": requested,
+                "batch_time": batch_time,
+                "top_n": top_n,
+                "status": "missing",
+                "error": "",
+            },
+            "items": {"热股": [], "ETF": [], "行业板块": [], "概念板块": []},
+            "analysis_tasks": [],
+        }
+        return self._with_meta(missing, requested, requested)
+
+    def run_batch(
+        self,
+        trade_date: str,
+        batch_time: str,
+        top_n: int = 20,
+        *,
+        quick_model: str = "deepseek-v4-pro",
+        deep_model: str = "deepseek-v4-pro",
+    ) -> dict[str, Any]:
         if batch_time != "daily":
             raise ValueError("batch_time must be daily")
         snapshot = self.hot_snapshot_getter(trade_date, top_n)
@@ -367,10 +466,10 @@ class HotRadarService:
                 ts_code=ts_code,
                 trade_date=trade_date,
                 analysts=["market", "fundamentals", "news"],
-                research_depth=1,
+                research_depth=3,
                 llm_provider="deepseek",
-                quick_model="deepseek-v4-flash",
-                deep_model="deepseek-v4-flash",
+                quick_model=quick_model,
+                deep_model=deep_model,
                 force_refresh=True,
             )
             task = self.analysis_service.create_task(request)

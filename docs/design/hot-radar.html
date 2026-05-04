@@ -67,9 +67,11 @@
 
     .hot-toolbar-dateline {
       display: inline-flex;
-      align-items: baseline;
+      align-items: center;
       gap: 8px;
       flex-wrap: wrap;
+      margin: 0;
+      cursor: pointer;
     }
 
     .hot-toolbar-kicker {
@@ -82,6 +84,8 @@
 
     .hot-toolbar-date {
       margin: 0;
+      min-width: 138px;
+      max-width: 150px;
       font-size: 16px;
       font-weight: 850;
       font-variant-numeric: tabular-nums;
@@ -97,6 +101,17 @@
       flex-shrink: 0;
       align-self: center;
       opacity: 0.95;
+    }
+
+    .hot-toolbar-fallback {
+      margin: 0;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #92400e;
+      background: var(--amber-soft);
+      border: 1px solid #f5d08f;
+      border-radius: var(--radius);
     }
 
     .hot-toolbar-top-label {
@@ -348,19 +363,23 @@
     .candidate-card .cell.hot-metrics .muted-line,
     .candidate-card .rank-reason-line,
     .candidate-card .verdict-explainer {
-      cursor: help;
+      cursor: pointer;
     }
 
-    .candidate-card .stock[title],
-    .candidate-card .cell.context[title],
-    .candidate-card .cell.hot-metrics strong[title] {
-      cursor: help;
+    .candidate-card .stock[data-detail],
+    .candidate-card .cell.context[data-detail],
+    .candidate-card .cell.hot-metrics strong[data-detail],
+    .insight-tag-cloud .tag[data-detail] {
+      cursor: pointer;
     }
 
     .red { color: var(--red); font-weight: 850; }
     .green { color: var(--green); font-weight: 850; }
 
     .mini-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       height: 32px;
       padding: 0 10px;
       border-radius: var(--radius);
@@ -370,7 +389,12 @@
       font-weight: 850;
       cursor: pointer;
       white-space: nowrap;
+      text-decoration: none;
+      line-height: 1;
+      font-family: inherit;
+      font-size: inherit;
     }
+    a.mini-btn:hover { text-decoration: none; }
 
     .card-actions {
       display: flex;
@@ -457,6 +481,137 @@
       align-content: start;
     }
 
+    .queue-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .queue-overview {
+      padding: 12px 14px;
+    }
+
+    .queue-overview .queue-panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .queue-lane {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--soft);
+    }
+
+    .queue-lane header,
+    .queue-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .queue-row {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+    }
+
+    .queue-row strong {
+      display: block;
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .queue-row span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .queue-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.38);
+    }
+
+    .modal-backdrop[hidden] {
+      display: none;
+    }
+
+    .analysis-modal {
+      width: min(560px, 100%);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24);
+      padding: 18px;
+    }
+
+    .analysis-modal header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 14px;
+    }
+
+    .analysis-modal h2,
+    .analysis-modal h3 {
+      margin: 0;
+      color: var(--text);
+    }
+
+    .analysis-modal p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .modal-group {
+      margin-top: 14px;
+    }
+
+    .modal-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .modal-chip {
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid #b9ccff;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .modal-chip:not(.selected) {
+      background: var(--panel);
+      color: var(--muted);
+      border-color: var(--line);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
     .insight-card {
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -494,10 +649,6 @@
       padding-bottom: 2px;
     }
 
-    .insight-tag-cloud .tag {
-      cursor: help;
-    }
-
     .insight-tag-cloud .tag .tag-count {
       margin-left: 5px;
       font-size: 10px;
@@ -505,6 +656,41 @@
       color: inherit;
       opacity: 0.72;
       letter-spacing: 0.02em;
+    }
+
+    .detail-popover {
+      position: fixed;
+      z-index: 80;
+      max-width: min(380px, calc(100vw - 32px));
+      padding: 10px 12px;
+      border: 1px solid #bfd0ee;
+      border-radius: var(--radius);
+      background: #ffffff;
+      color: var(--text);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+      pointer-events: none;
+    }
+
+    .detail-popover[hidden] {
+      display: none;
+    }
+
+    .detail-popover strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 850;
+      color: var(--muted);
+    }
+
+    .detail-popover span {
+      display: block;
+      font-size: 13px;
+      line-height: 19px;
+      font-weight: 750;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .insight-stat-grid {
@@ -640,14 +826,16 @@
         <div class="workspace">
       <div class="hot-toolbar" aria-label="热榜参数与同步">
         <div class="hot-toolbar-meta">
-          <div class="hot-toolbar-dateline">
+          <label class="hot-toolbar-dateline">
             <span class="hot-toolbar-kicker">基准日</span>
-            <time class="hot-toolbar-date" id="current-trade-date" datetime="" title="本机日历今日，作为 ths_hot 与分析的 trade_date">—</time>
-          </div>
+            <select class="toolbar-select hot-toolbar-date" id="current-trade-date" aria-label="基准日，可选最近 30 个交易日；同步榜单会从该日向前寻找最近有 ths_hot 数据的日期">
+              <option value="">加载中</option>
+            </select>
+          </label>
           <span class="hot-toolbar-split" aria-hidden="true"></span>
           <label class="hot-toolbar-top-label">
             <span>Top · 可选</span>
-            <select class="toolbar-select" id="top-n" title="热股条数（10–50）">
+            <select class="toolbar-select" id="top-n" aria-label="热股条数（10 到 50）">
               <option value="10">Top 10</option>
               <option value="20" selected>Top 20</option>
               <option value="30">Top 30</option>
@@ -660,6 +848,18 @@
           同步榜单
         </button>
       </div>
+
+      <p class="hot-toolbar-fallback" id="hot-radar-fallback" hidden></p>
+
+      <section class="panel queue-overview" aria-label="当前分析队列">
+        <div class="panel-head">
+          <h2>当前分析队列</h2>
+          <span class="tab-note">Pro 并发 1，Flash 并发 3；排队任务可调优先级或删除。</span>
+        </div>
+        <div class="queue-panel" id="queue-panel">
+          <p class="insight-lead">正在读取 /api/analysis/queue...</p>
+        </div>
+      </section>
 
       <section class="content-grid">
         <div class="panel candidate-panel">
@@ -693,6 +893,51 @@
     </div>
   </div>
 
+  <div class="detail-popover" id="detail-popover" hidden></div>
+
+  <div class="modal-backdrop" id="analysis-modal" hidden>
+    <section class="analysis-modal" role="dialog" aria-modal="true" aria-labelledby="analysis-modal-title">
+      <header>
+        <div>
+          <h2 id="analysis-modal-title">加入分析队列</h2>
+          <p id="analysis-modal-stock">--</p>
+        </div>
+        <button class="mini-btn mini-btn-muted" type="button" id="analysis-modal-close">关闭</button>
+      </header>
+
+      <div class="modal-group">
+        <h3>分析师团队</h3>
+        <div class="modal-options" id="modal-analysts">
+          <button type="button" class="modal-chip selected" data-modal-analyst="market" aria-pressed="true">技术面</button>
+          <button type="button" class="modal-chip selected" data-modal-analyst="fundamentals" aria-pressed="true">基本面</button>
+          <button type="button" class="modal-chip" data-modal-analyst="news" aria-pressed="false">新闻</button>
+          <button type="button" class="modal-chip" data-modal-analyst="social" aria-pressed="false">情绪</button>
+        </div>
+      </div>
+
+      <div class="modal-group">
+        <h3>研究深度</h3>
+        <div class="modal-options" id="modal-depth">
+          <button type="button" class="modal-chip selected" data-modal-depth="3" aria-pressed="true">标准</button>
+          <button type="button" class="modal-chip" data-modal-depth="5" aria-pressed="false">深度</button>
+        </div>
+      </div>
+
+      <div class="modal-group">
+        <h3>报告分析模型</h3>
+        <div class="modal-options" id="modal-model">
+          <button type="button" class="modal-chip selected" data-modal-model="deepseek-v4-pro" aria-pressed="true">V4 Pro</button>
+          <button type="button" class="modal-chip" data-modal-model="deepseek-v4-flash" aria-pressed="false">V4 Flash</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="mini-btn mini-btn-muted" type="button" id="analysis-modal-cancel">取消</button>
+        <button class="mini-btn analyze-btn" type="button" id="analysis-modal-submit">加入分析队列</button>
+      </div>
+    </section>
+  </div>
+
   <script>
     const topN = document.querySelector("#top-n");
     const currentTradeDateEl = document.querySelector("#current-trade-date");
@@ -700,21 +945,94 @@
     const topPill = document.querySelector(".status-pills .pill.blue");
     const candidateList = document.querySelector("#candidate-list");
     const insightPanel = document.querySelector("#insight-panel");
+    const detailPopover = document.querySelector("#detail-popover");
     const tabNote = document.querySelector("#tab-market-note");
+    const hotRadarFallbackEl = document.querySelector("#hot-radar-fallback");
     const tabButtons = Array.from(document.querySelectorAll(".tabs .tab"));
+    const analysisModal = document.querySelector("#analysis-modal");
+    const analysisModalStock = document.querySelector("#analysis-modal-stock");
+    const analysisModalSubmit = document.querySelector("#analysis-modal-submit");
+    const modalAnalystButtons = Array.from(document.querySelectorAll("[data-modal-analyst]"));
+    const modalDepthButtons = Array.from(document.querySelectorAll("[data-modal-depth]"));
+    const modalModelButtons = Array.from(document.querySelectorAll("[data-modal-model]"));
+
+    const REPORT_MODEL_STORAGE_KEY = "TRADINGAGENTS_REPORT_MODEL";
+    const HOT_RADAR_DASHBOARD_CACHE_PREFIX = "TRADINGAGENTS_HOT_RADAR_DASHBOARD_SNAPSHOT_V1";
+    const HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY = "TRADINGAGENTS_HOT_RADAR_COMPLETED_HISTORY_SNAPSHOT_V1";
+    const HOT_RADAR_COMPLETED_HISTORY_CACHE_LIMIT = 150;
+    function getSelectedReportModel() {
+      const model = localStorage.getItem(REPORT_MODEL_STORAGE_KEY);
+      return model === "deepseek-v4-flash" ? model : "deepseek-v4-pro";
+    }
+
+    function setExclusiveModalGroup(buttons, selectedValue, dataKey) {
+      buttons.forEach((button) => {
+        const active = button.dataset[dataKey] === selectedValue;
+        button.classList.toggle("selected", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    }
+
+    function selectedModalAnalysts() {
+      return modalAnalystButtons
+        .filter((button) => button.classList.contains("selected"))
+        .map((button) => button.dataset.modalAnalyst);
+    }
+
+    function selectedModalDepth() {
+      const active = modalDepthButtons.find((button) => button.classList.contains("selected"));
+      return Number(active?.dataset.modalDepth || 3);
+    }
+
+    function selectedModalModel() {
+      const active = modalModelButtons.find((button) => button.classList.contains("selected"));
+      return active?.dataset.modalModel || getSelectedReportModel();
+    }
+
+    function openAnalysisModal(tsCode, tradeDateHint, stockNameHint, forceRefresh) {
+      const code = String(tsCode || "").trim().toUpperCase();
+      if (!code || !analysisModal) return;
+      const stockName = String(stockNameHint || "").trim();
+      const tradeDate = String(tradeDateHint || currentTradeDate || "").trim();
+      const force = Boolean(forceRefresh);
+      activeAnalysisModalRow = { tsCode: code, stockName, tradeDate, forceRefresh: force };
+      const forceTag = force ? " · 再次分析（强制重跑）" : "";
+      analysisModalStock.textContent = `${stockName || code} · ${code} · ${tradeDate || "未选日期"}${forceTag}`;
+      setExclusiveModalGroup(modalDepthButtons, "3", "modalDepth");
+      setExclusiveModalGroup(modalModelButtons, getSelectedReportModel(), "modalModel");
+      modalAnalystButtons.forEach((button) => {
+        const selected = button.dataset.modalAnalyst === "market" || button.dataset.modalAnalyst === "fundamentals";
+        button.classList.toggle("selected", selected);
+        button.setAttribute("aria-pressed", String(selected));
+      });
+      analysisModal.hidden = false;
+    }
+
+    function closeAnalysisModal() {
+      if (analysisModal) analysisModal.hidden = true;
+      activeAnalysisModalRow = null;
+    }
 
     let currentTradeDate = "";
     let cachedPayload = null;
     let activeMarketKey = "热股";
+    let activeAnalysisModalRow = null;
+    let latestAnalysisQueue = null;
+    let latestQueueApiAvailable = true;
+    let lastPrefetchHistDay = "";
 
-    /** ts_code (`XXXXXX.SH` upper) → latest analysis row from `/api/analysis/history` for ``currentTradeDate``. */
-    let analysisHistoryLatestByCode = new Map();
+    /** Completed-only history (not mixed into queue UI). ``ts_code`` → rows sorted by time desc. */
+    let completedHistoryItems = [];
+    let completedReportByStock = new Map();
+    /** Active queue tasks only: queued / running / stopping / stopped — keyed ``${ts_code}|${trade_date}``. */
+    let activeQueueByCodeDate = new Map();
+    let lastDashboardMeta = { meta: {}, run: {} };
 
     const EMPTY_HINT = {
-      热股: "暂无热股。无本地快照时会尝试自动拉取；也可点顶部「同步榜单」，或等待定时任务写入。",
-      ETF: "暂无 ETF 热榜条目。可先等自动拉榜或点「同步榜单」（与热股同属一次 ths_hot）。",
-      行业板块: "暂无行业板块热榜条目。可先等自动拉榜或点「同步榜单」。",
-      概念板块: "暂无概念板块热榜条目。可先等自动拉榜或点「同步榜单」。",
+      热股: "暂无本地热股快照。本页不自动拉 Tushare，请点顶部「同步榜单」或等待定时任务写入。",
+      ETF: "暂无本地 ETF 热榜条目。请点「同步榜单」一并写入热股快照。",
+      行业板块: "暂无本地行业板块热榜条目。请点「同步榜单」。",
+      概念板块: "暂无本地概念板块热榜条目。请点「同步榜单」。",
       __anomaly__:
         "「异常」取自热股中高波动或与理由关键词匹配的条目（同花顺无单独榜单）。需要先有一份热股快照。",
     };
@@ -747,11 +1065,10 @@
         .trim();
     }
 
-    /** Native tooltip (title=…); omit when empty. */
-    function titleAttr(fullText) {
+    function detailAttr(fullText, label = "详情") {
       const raw = compactText(fullText ?? "", "").trim();
       if (!raw) return "";
-      return ` title="${escapeHtml(raw)}"`;
+      return ` data-detail="${escapeHtml(raw)}" data-detail-title="${escapeHtml(label)}" tabindex="0" aria-label="${escapeHtml(`${label}：${raw}`)}"`;
     }
 
     function conceptTags(value) {
@@ -765,6 +1082,42 @@
         .map((part) => part.trim())
         .filter(Boolean)
         .slice(0, 3);
+    }
+
+    let detailPopoverPinned = false;
+
+    function placeDetailPopover(x, y) {
+      if (!detailPopover || detailPopover.hidden) return;
+      const margin = 12;
+      const offset = 14;
+      const rect = detailPopover.getBoundingClientRect();
+      let left = x + offset;
+      let top = y + offset;
+      if (left + rect.width + margin > window.innerWidth) {
+        left = Math.max(margin, x - rect.width - offset);
+      }
+      if (top + rect.height + margin > window.innerHeight) {
+        top = Math.max(margin, y - rect.height - offset);
+      }
+      detailPopover.style.left = `${left}px`;
+      detailPopover.style.top = `${top}px`;
+    }
+
+    function showDetailPopover(target, event, pinned = false) {
+      if (!detailPopover || !target?.dataset?.detail) return;
+      const title = target.dataset.detailTitle || "详情";
+      const text = target.dataset.detail || "";
+      detailPopover.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span>`;
+      detailPopover.hidden = false;
+      detailPopoverPinned = pinned;
+      const rect = target.getBoundingClientRect();
+      placeDetailPopover(event?.clientX ?? rect.left, event?.clientY ?? rect.bottom);
+    }
+
+    function hideDetailPopover(force = false) {
+      if (!detailPopover || (detailPopoverPinned && !force)) return;
+      detailPopover.hidden = true;
+      detailPopoverPinned = false;
     }
 
     function dedupeHotItems(rows) {
@@ -799,6 +1152,131 @@
       const value = String(raw ?? "").trim().toUpperCase();
       if (/^\d{6}\.(SH|SZ|BJ)$/.test(value)) return value;
       return "";
+    }
+
+    function normalizeTradeDate(value) {
+      const t = String(value ?? "").trim();
+      if (!t) return "";
+      const m = t.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : t;
+    }
+
+    function rowKey(tsCode, tradeDate) {
+      const c = normalizeTsCode(tsCode);
+      const d = normalizeTradeDate(tradeDate);
+      if (!c || !d) return "";
+      return `${c}|${d}`;
+    }
+
+    function readStorageJson(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function writeStorageJson(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (_) {
+        /* localStorage is only a first-paint cache; DB/API remains authoritative. */
+      }
+    }
+
+    function removeStorageKey(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    function hotRadarDashboardCacheKey(tradeDate, count) {
+      return `${HOT_RADAR_DASHBOARD_CACHE_PREFIX}:${normalizeTradeDate(tradeDate) || "latest"}:${Number(count) || 20}`;
+    }
+
+    function readHotRadarDashboardSnapshot(tradeDate, count) {
+      const payload = readStorageJson(hotRadarDashboardCacheKey(tradeDate, count));
+      return payload?.body && typeof payload.body === "object" ? payload.body : null;
+    }
+
+    function writeHotRadarDashboardSnapshot(tradeDate, count, body) {
+      if (!body || typeof body !== "object") {
+        removeStorageKey(hotRadarDashboardCacheKey(tradeDate, count));
+        return;
+      }
+      writeStorageJson(hotRadarDashboardCacheKey(tradeDate, count), {
+        version: 1,
+        source: "localStorage snapshot; DB/API 为准",
+        updated_at: new Date().toISOString(),
+        body,
+      });
+    }
+
+    function slimCompletedHistoryRow(row) {
+      if (!row?.task_id) return null;
+      const req = row.request || {};
+      return {
+        task_id: row.task_id || "",
+        status: row.status || "",
+        request: {
+          ts_code: req.ts_code || row.ts_code || "",
+          stock_name: req.stock_name || row.stock_name || "",
+          trade_date: req.trade_date || row.trade_date || "",
+          llm_provider: req.llm_provider || "",
+          quick_model: req.quick_model || "",
+          deep_model: req.deep_model || "",
+          research_depth: req.research_depth ?? "",
+          origin: req.origin || row.origin || "",
+        },
+        lane: row.lane || "",
+        cached: Boolean(row.cached),
+        cache_key: row.cache_key || "",
+        decision: row.decision || "",
+        final_decision: String(row.final_decision || "").slice(0, 4000),
+        verdict: row.verdict || "",
+        error: row.error || "",
+        created_at: row.created_at || "",
+        completed_at: row.completed_at || "",
+        updated_at: row.updated_at || "",
+        section_count: Object.keys(row.report_sections || {}).length || Number(row.section_count || 0),
+      };
+    }
+
+    function readCompletedHistorySnapshot() {
+      const payload = readStorageJson(HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY);
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      return items.filter((item) => item?.task_id && item.status === "completed");
+    }
+
+    function writeCompletedHistorySnapshot(items) {
+      const slimItems = (items || [])
+        .filter((item) => item?.status === "completed")
+        .map(slimCompletedHistoryRow)
+        .filter(Boolean)
+        .slice(0, HOT_RADAR_COMPLETED_HISTORY_CACHE_LIMIT);
+      if (!slimItems.length) {
+        removeStorageKey(HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY);
+        return;
+      }
+      writeStorageJson(HOT_RADAR_COMPLETED_HISTORY_CACHE_KEY, {
+        version: 1,
+        source: "localStorage snapshot; DB/API 为准",
+        updated_at: new Date().toISOString(),
+        items: slimItems,
+      });
+    }
+
+    function loadCompletedHistorySnapshot() {
+      const cachedItems = readCompletedHistorySnapshot();
+      if (!cachedItems.length) return false;
+      completedHistoryItems = cachedItems
+        .sort((a, b) => rowSortTime(b).localeCompare(rowSortTime(a)))
+        .slice(0, HOT_RADAR_COMPLETED_HISTORY_CACHE_LIMIT);
+      buildCompletedReportByStock();
+      return true;
     }
 
     function mapTierToCnLabel(tierEn) {
@@ -855,18 +1333,21 @@
 
     function pmDisplayTier(signalRaw) {
       const s = String(signalRaw || "").trim();
-      if (s === "增持") return { label: "增持", tone: "decision-chip--buy" };
-      if (s === "减仓") return { label: "减持", tone: "decision-chip--sell" };
+      if (s === "增持") return { label: "买入", tone: "decision-chip--buy" };
+      if (s === "减仓") return { label: "卖出", tone: "decision-chip--sell" };
       if (s === "持有") return { label: "持有", tone: "decision-chip--hold" };
-      if (s === "观察") return { label: "观察", tone: "decision-chip--watch" };
-      if (s === "等待报告" || !s) return { label: "观察", tone: "decision-chip--watch" };
+      if (s === "观察") return { label: "观望", tone: "decision-chip--watch" };
+      if (s === "等待报告" || !s) return { label: "观望", tone: "decision-chip--watch" };
       return { label: s, tone: "decision-chip--watch" };
     }
 
     function portfolioManagerBrief(row) {
       if (!row) return { line: "", tone: "decision-chip--watch" };
       const st = String(row.status || "");
-      if (st === "running" || st === "queued") return { line: "组合经理：分析中", tone: "decision-chip--run" };
+      if (st === "running") return { line: "组合经理：分析中", tone: "decision-chip--run" };
+      if (st === "queued") return { line: "组合经理：排队中", tone: "decision-chip--run" };
+      if (st === "stopping") return { line: "组合经理：停止中", tone: "decision-chip--bad" };
+      if (st === "stopped") return { line: "组合经理：已停止", tone: "decision-chip--watch" };
       if (st === "failed") return { line: "组合经理：失败", tone: "decision-chip--bad" };
 
       let sig = extractDecisionSignal(row.final_decision || "", row.decision || "");
@@ -879,39 +1360,299 @@
         else if (v === "观察") sig = "观察";
       }
 
+      if (st === "completed" && (!sig || sig === "等待报告")) {
+        return { line: "组合经理：已完成", tone: "decision-chip--watch" };
+      }
+
       const { label, tone } = pmDisplayTier(sig);
       return { line: `组合经理：${label}`, tone };
     }
 
-    async function prefetchAnalysisHistory() {
-      analysisHistoryLatestByCode = new Map();
-      let items = [];
-      try {
-        const res = await fetch("/api/analysis/history?limit=150");
-        if (!res.ok) return;
-        const body = await res.json();
-        items = Array.isArray(body.items) ? body.items : [];
-      } catch (_) {
-        return;
-      }
-      const day = String(currentTradeDate || "").trim();
-      if (!day) return;
-      for (const row of items) {
+    function rowSortTime(row) {
+      return String(row.updated_at || row.completed_at || row.created_at || "");
+    }
+
+    function isoIsToday(iso) {
+      const t = Date.parse(String(iso || ""));
+      if (!Number.isFinite(t)) return false;
+      const d = new Date(t);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}` === calendarTodayLocal();
+    }
+
+    function buildCompletedReportByStock() {
+      completedReportByStock = new Map();
+      for (const row of completedHistoryItems) {
+        if (String(row.status || "") !== "completed") continue;
         const req = row.request || {};
-        if (String(req.trade_date || "").trim() !== day) continue;
         const code = normalizeTsCode(req.ts_code || row.ts_code);
         if (!code) continue;
-        const prev = analysisHistoryLatestByCode.get(code);
-        const tRow = row.updated_at || row.created_at || "";
-        const tPrev = prev ? prev.updated_at || prev.created_at || "" : "";
-        if (!prev || String(tRow) > String(tPrev)) analysisHistoryLatestByCode.set(code, row);
+        if (!completedReportByStock.has(code)) completedReportByStock.set(code, []);
+        completedReportByStock.get(code).push(row);
+      }
+      for (const [, rows] of completedReportByStock) {
+        rows.sort((a, b) => rowSortTime(b).localeCompare(rowSortTime(a)));
       }
     }
 
-    function resolveReportForRow(tsNormalized, linkedTask) {
-      const hist = analysisHistoryLatestByCode.get(tsNormalized);
+    async function hydrateCompletedReports() {
+      if (!completedHistoryItems.length) {
+        loadCompletedHistorySnapshot();
+      }
+      try {
+        const res = await fetch("/api/analysis/history?status=completed&limit=100");
+        if (!res.ok) return;
+        const body = await res.json();
+        const incoming = Array.isArray(body.items) ? body.items : [];
+        completedHistoryItems = incoming
+          .filter((r) => String(r.status || "") === "completed")
+          .sort((a, b) => rowSortTime(b).localeCompare(rowSortTime(a)))
+          .slice(0, 150);
+        writeCompletedHistorySnapshot(completedHistoryItems);
+      } catch (_) {
+        /* keep prior completedHistoryItems to avoid row UI flicker on transient errors */
+      }
+      buildCompletedReportByStock();
+    }
+
+    function mergeCompletedTaskLocal(row) {
+      if (String(row.status || "") !== "completed" || !row.task_id) return;
+      const id = String(row.task_id);
+      const next = completedHistoryItems.filter((r) => String(r.task_id) !== id);
+      next.unshift(row);
+      completedHistoryItems = next.slice(0, 120);
+      writeCompletedHistorySnapshot(completedHistoryItems);
+      buildCompletedReportByStock();
+    }
+
+    function tradeDatesWithinOneDay(a, b) {
+      const da = Date.parse(`${normalizeTradeDate(a)}T00:00:00`);
+      const db = Date.parse(`${normalizeTradeDate(b)}T00:00:00`);
+      if (!Number.isFinite(da) || !Number.isFinite(db)) return false;
+      return Math.abs(da - db) <= 86400000;
+    }
+
+    function candidateDatesForRow(rowTradeDate) {
+      const meta = lastDashboardMeta.meta || {};
+      const run = lastDashboardMeta.run || {};
+      return [
+        normalizeTradeDate(rowTradeDate),
+        normalizeTradeDate(currentTradeDate),
+        normalizeTradeDate(meta.resolved_trade_date),
+        normalizeTradeDate(run.trade_date),
+        normalizeTradeDate(lastPrefetchHistDay),
+      ].filter(Boolean);
+    }
+
+    /** Priority 1: active queue (same code; prefer exact trade_date key, else newest active task for code). */
+    function pickQueueTaskForRow(tsNormalized, rowTradeDate) {
+      const dRow = normalizeTradeDate(rowTradeDate);
+      const uniqDates = [...new Set(candidateDatesForRow(rowTradeDate))];
+      for (const fd of uniqDates) {
+        const k = rowKey(tsNormalized, fd);
+        if (k && activeQueueByCodeDate.has(k)) return activeQueueByCodeDate.get(k);
+      }
+      if (dRow) {
+        const ex = rowKey(tsNormalized, dRow);
+        if (ex && activeQueueByCodeDate.has(ex)) return activeQueueByCodeDate.get(ex);
+      }
+      let best = null;
+      let bestT = "";
+      const prefix = `${tsNormalized}|`;
+      for (const [key, row] of activeQueueByCodeDate) {
+        if (!key.startsWith(prefix)) continue;
+        const t = rowSortTime(row);
+        if (!best || t > bestT) {
+          best = row;
+          bestT = t;
+        }
+      }
+      return best;
+    }
+
+    /** Priority 2: latest completed report for that ts_code, **only if generated today (local calendar)**.
+
+     Reports older than today are intentionally excluded from Hot Radar row state — yesterday's
+     verdicts shouldn't masquerade as the current day's view (they're still on the Reports page).
+     */
+    function pickCompletedForRow(tsNormalized) {
+      const rows = completedReportByStock.get(tsNormalized) || [];
+      for (const r of rows) {
+        if (isoIsToday(rowSortTime(r))) return r;
+      }
+      return null;
+    }
+
+    function buildActiveQueueIndex(queue) {
+      activeQueueByCodeDate = new Map();
+      const lanes = queue?.lanes || {};
+      const active = new Set(["queued", "running", "stopping", "stopped"]);
+      for (const lane of Object.values(lanes)) {
+        for (const group of ["running", "queued", "finished"]) {
+          for (const row of lane?.[group] || []) {
+            if (!active.has(String(row.status || ""))) continue;
+            const req = row.request || {};
+            const code = normalizeTsCode(req.ts_code || row.ts_code);
+            const d = normalizeTradeDate(req.trade_date);
+            if (!code || !d) continue;
+            const key = `${code}|${d}`;
+            const merged = {
+              ...row,
+              request: req,
+              final_decision: row.final_decision || "",
+              decision: row.decision || "",
+            };
+            const prev = activeQueueByCodeDate.get(key);
+            if (!prev || rowSortTime(merged) > rowSortTime(prev)) activeQueueByCodeDate.set(key, merged);
+          }
+        }
+      }
+    }
+
+    async function prefetchAnalysisHistory(histDayParam, meta, run) {
+      lastPrefetchHistDay = String(histDayParam || "").trim();
+      lastDashboardMeta = {
+        meta: meta || {},
+        run: run || {},
+      };
+      await hydrateCompletedReports();
+      const queue = await loadAnalysisQueue();
+      buildActiveQueueIndex(queue);
+      return queue;
+    }
+
+    async function refreshHotRadarRowState() {
+      if (!cachedPayload) return;
+      await hydrateCompletedReports();
+      const queue = await loadAnalysisQueue();
+      buildActiveQueueIndex(queue);
+      latestAnalysisQueue = queue;
+      renderCandidatesFromCache();
+      renderAnalysisQueue(queue || latestAnalysisQueue);
+    }
+
+    function emptyQueuePayload() {
+      return {
+        lanes: {
+          pro: { capacity: 1, running: [], queued: [], finished: [] },
+          flash: { capacity: 3, running: [], queued: [], finished: [] },
+        },
+      };
+    }
+
+    function laneForQueueRequest(request) {
+      const quick = String(request?.quick_model || "");
+      const deep = String(request?.deep_model || "");
+      return quick === "deepseek-v4-flash" || deep === "deepseek-v4-flash" ? "flash" : "pro";
+    }
+
+    function queueGroupForStatus(status) {
+      const st = String(status || "");
+      if (st === "queued") return "queued";
+      if (st === "running" || st === "stopping") return "running";
+      if (["failed", "stopped"].includes(st)) return "finished";
+      return "";
+    }
+
+    function queueStatusLabel(status) {
+      const st = String(status || "");
+      if (st === "queued") return "排队中";
+      if (st === "running") return "分析中";
+      if (st === "stopping") return "停止中";
+      if (st === "completed") return "已完成";
+      if (st === "failed") return "失败";
+      if (st === "stopped") return "已停止";
+      return st || "未知";
+    }
+
+    function hotRadarNameForCode(tsCode) {
+      const code = normalizeTsCode(tsCode);
+      if (!code || !cachedPayload?.items) return "";
+      for (const rows of Object.values(cachedPayload.items || {})) {
+        for (const row of rows || []) {
+          if (normalizeTsCode(row.ts_code) === code && row.ts_name) return String(row.ts_name);
+        }
+      }
+      return "";
+    }
+
+    function queueRowFromTaskPayload(row) {
+      const req = row?.request || {};
+      const status = String(row?.status || "queued");
+      const lane = row?.lane || laneForQueueRequest(req);
+      return {
+        task_id: row?.task_id,
+        status,
+        request: req,
+        origin: row?.origin || req.origin || "hot_radar",
+        lane,
+        priority: row?.priority || (req.origin === "analyze" ? 100 : 50),
+        queue_position: row?.queue_position || 0,
+        stop_requested: Boolean(row?.stop_requested || status === "stopping"),
+        removed_from_queue: Boolean(row?.removed_from_queue),
+        cached: Boolean(row?.cached),
+        decision: row?.decision || "",
+        error: row?.error || "",
+        created_at: row?.created_at || "",
+        updated_at: row?.updated_at || "",
+      };
+    }
+
+    function pushQueueRow(queue, row) {
+      const normalized = queueRowFromTaskPayload(row);
+      if (!normalized.task_id || normalized.removed_from_queue) return;
+      const lane = normalized.lane || "pro";
+      const group = queueGroupForStatus(normalized.status);
+      if (!group) return;
+      if (!queue.lanes[lane]) {
+        queue.lanes[lane] = { capacity: lane === "flash" ? 3 : 1, running: [], queued: [], finished: [] };
+      }
+      queue.lanes[lane][group].push(normalized);
+    }
+
+    function mergeQueuePayloads(...payloads) {
+      const merged = emptyQueuePayload();
+      const seen = new Set();
+      for (const payload of payloads) {
+        const lanes = payload?.lanes || {};
+        for (const lane of Object.values(lanes)) {
+          for (const group of ["running", "queued", "finished"]) {
+            for (const row of lane?.[group] || []) {
+              const taskId = String(row?.task_id || "").trim();
+              if (!taskId || seen.has(taskId)) continue;
+              seen.add(taskId);
+              pushQueueRow(merged, row);
+            }
+          }
+        }
+      }
+      return merged;
+    }
+
+    async function loadAnalysisQueueFromHistory() {
+      const queue = emptyQueuePayload();
+      try {
+        const response = await fetch("/api/analysis/history?limit=150");
+        if (!response.ok) return queue;
+        const body = await response.json();
+        for (const row of body.items || []) {
+          if (!["queued", "running", "stopping", "stopped"].includes(String(row.status || ""))) continue;
+          pushQueueRow(queue, row);
+        }
+      } catch (_) {
+        /* queue history fallback is best-effort */
+      }
+      return queue;
+    }
+
+    function resolveReportForRow(tsNormalized, linkedTask, rowTradeDate) {
+      const q = pickQueueTaskForRow(tsNormalized, rowTradeDate);
+      const c = !q ? pickCompletedForRow(tsNormalized) : null;
+      const primary = q || c;
       const onlyLink =
-        linkedTask?.analysis_task_id && linkedTask.ts_code === tsNormalized
+        !primary && linkedTask?.analysis_task_id && linkedTask.ts_code === tsNormalized
           ? {
               task_id: linkedTask.analysis_task_id,
               status: linkedTask.status,
@@ -920,7 +1661,7 @@
               verdict: linkedTask.verdict,
             }
           : null;
-      if (hist?.task_id) return { primary: hist, taskId: hist.task_id };
+      if (primary?.task_id) return { primary, taskId: primary.task_id };
       if (onlyLink) return { primary: onlyLink, taskId: onlyLink.task_id };
       return { primary: null, taskId: null };
     }
@@ -972,7 +1713,7 @@
           const pct = Number(item.pct_change);
           const pctLabel = Number.isFinite(pct) ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "";
           const reasonBlock = rankReason
-            ? `<span class="rank-reason-line"${titleAttr(rankReason)}>${escapeHtml(rankReason)}</span>`
+            ? `<span class="rank-reason-line"${detailAttr(rankReason, "入榜理由")}>${escapeHtml(rankReason)}</span>`
             : "";
           const tsNormalized = normalizeTsCode(item.ts_code);
           const canAnalyzeRow =
@@ -981,25 +1722,43 @@
           const linkNorm = linkedTask?.ts_code ? normalizeTsCode(linkedTask.ts_code) : "";
           const linkedAligned = linkedTask && linkNorm === tsNormalized ? linkedTask : null;
           const { primary: reportPrimary, taskId: reportTaskId } = tsNormalized
-            ? resolveReportForRow(tsNormalized, linkedAligned)
+            ? resolveReportForRow(tsNormalized, linkedAligned, rowTradeDate)
             : { primary: null, taskId: null };
 
           const actionParts = [];
           if (canAnalyzeRow) {
             if (reportTaskId) {
               const pm = portfolioManagerBrief(reportPrimary);
+              const reportStatus = String(reportPrimary?.status || "");
+              const isInFlightReport = reportStatus === "queued" || reportStatus === "running" || reportStatus === "stopping";
               actionParts.push(
-                `<span class="decision-chip ${pm.tone}"${titleAttr(pm.line)}>${escapeHtml(pm.line)}</span>`,
+                `<span class="decision-chip ${pm.tone}"${detailAttr(pm.line, "组合经理")}>${escapeHtml(pm.line)}</span>`,
               );
-              actionParts.push(
-                `<button type="button" class="mini-btn" data-task-id="${escapeHtml(reportTaskId)}">报告</button>`,
-              );
-              actionParts.push(
-                `<button type="button" class="mini-btn mini-btn-muted analyze-btn-secondary" data-analyze-ts="${escapeHtml(tsNormalized)}" data-trade-date="${escapeHtml(rowTradeDate)}">再次分析</button>`,
-              );
+              /* 「报告」shows progress for running/stopping or the captured report for completed/stopped/failed; queued has nothing yet.
+                 Use <a href target="_blank"> rather than window.open so browsers always treat it as a user-initiated navigation
+                 (avoids popup-blocker false-positives during the 12s background refresh). */
+              if (reportStatus !== "queued") {
+                actionParts.push(
+                  `<a class="mini-btn" href="/?task_id=${encodeURIComponent(reportTaskId)}" target="_blank" rel="noopener noreferrer">报告</a>`,
+                );
+              }
+              if (reportStatus === "queued") {
+                actionParts.push(
+                  `<button type="button" class="mini-btn mini-btn-muted" data-queue-action="delete" data-task-id="${escapeHtml(reportTaskId)}">删除</button>`,
+                );
+              } else if (reportStatus === "running" || reportStatus === "stopping") {
+                actionParts.push(
+                  `<button type="button" class="mini-btn mini-btn-muted" data-queue-action="stop" data-task-id="${escapeHtml(reportTaskId)}">停止</button>`,
+                );
+              } else if (!isInFlightReport) {
+                /* completed / stopped / failed → allow rerun (force_refresh, never overwrites old report). */
+                actionParts.push(
+                  `<button type="button" class="mini-btn mini-btn-muted analyze-btn-secondary" data-analyze-ts="${escapeHtml(tsNormalized)}" data-analyze-name="${escapeHtml(item.ts_name || "")}" data-trade-date="${escapeHtml(rowTradeDate)}" data-analyze-force="1">再次分析</button>`,
+                );
+              }
             } else {
               actionParts.push(
-                `<button type="button" class="mini-btn analyze-btn" data-analyze-ts="${escapeHtml(tsNormalized)}" data-trade-date="${escapeHtml(rowTradeDate)}">分析</button>`,
+                `<button type="button" class="mini-btn analyze-btn" data-analyze-ts="${escapeHtml(tsNormalized)}" data-analyze-name="${escapeHtml(item.ts_name || "")}" data-trade-date="${escapeHtml(rowTradeDate)}">分析</button>`,
               );
             }
           }
@@ -1029,16 +1788,17 @@
           return `
           <article class="candidate-card">
             <span class="rank">${index + 1}</span>
-            <div class="stock"${titleAttr(stockTitle)}><strong>${escapeHtml(item.ts_name || item.ts_code || "-")}</strong><span>${escapeHtml(
+            <div class="stock"${detailAttr(stockTitle, "股票")}><strong>${escapeHtml(item.ts_name || item.ts_code || "-")}</strong><span>${escapeHtml(
               item.ts_code || "—",
             )}</span></div>
-            <div class="cell hot-metrics"><strong${titleAttr(hotNumericTip)}>${hotPrimary}</strong><span class="muted-line"${titleAttr(
+            <div class="cell hot-metrics"><strong${detailAttr(hotNumericTip, "热度")}>${hotPrimary}</strong><span class="muted-line"${detailAttr(
               secondLineTooltip,
+              "行情",
             )}>${escapeHtml(secondLine || "—")}</span>${reasonBlock}</div>
-            <div class="cell context"${titleAttr(conceptFullTip)}>${tags}</div>
+            <div class="cell context"${detailAttr(conceptFullTip, "概念")}>${tags}</div>
             <div class="cell verdict"><strong class="${
               String(verdict) === "强关注" ? "red" : ""
-            }">${escapeHtml(String(verdict))}</strong><span class="verdict-explainer"${titleAttr(verdictTip)}>${escapeHtml(verdictDisplay)}</span></div>
+            }">${escapeHtml(String(verdict))}</strong><span class="verdict-explainer"${detailAttr(verdictTip, "分析摘要")}>${escapeHtml(verdictDisplay)}</span></div>
             <div class="cell task">${action}</div>
           </article>`;
         })
@@ -1050,6 +1810,16 @@
       const run = body.run || {};
       const items = body.items || {};
       const analysisTasks = body.analysis_tasks || [];
+      const meta = body.meta || {};
+      if (hotRadarFallbackEl) {
+        if (meta.used_fallback && meta.requested_trade_date && meta.resolved_trade_date) {
+          hotRadarFallbackEl.hidden = false;
+          hotRadarFallbackEl.textContent = `基准日 ${meta.requested_trade_date} 尚无可用热榜快照；已展示最近交易日 ${meta.resolved_trade_date} 的数据（列表与侧栏均来自该日快照）。`;
+        } else {
+          hotRadarFallbackEl.hidden = true;
+          hotRadarFallbackEl.textContent = "";
+        }
+      }
       renderInsights(items, run, analysisTasks);
       renderCandidatesFromCache();
     }
@@ -1090,7 +1860,7 @@
             .slice(0, 18)
             .map(([name, count], index) => {
               const tip = `${name}（${count} 只热股出现该概念）`;
-              return `<span class="tag ${index === 0 ? "hot" : ""}"${titleAttr(tip)}>${escapeHtml(name)}<span class="tag-count" aria-hidden="true">×${count}</span></span>`;
+              return `<span class="tag ${index === 0 ? "hot" : ""}"${detailAttr(tip, "热点主线")}>${escapeHtml(name)}<span class="tag-count" aria-hidden="true">×${count}</span></span>`;
             })
             .join("")
         : `<span class="tag">${escapeHtml(run?.status === "missing" ? "无快照可聚合" : "当前热股无 concept 文本")}</span>`;
@@ -1153,7 +1923,7 @@
         </section>
         <section class="insight-card notice">
           <h3>分析入口</h3>
-          <p>热股与「异常」中 A 股代码：无当日分析记录时显示<strong>分析</strong>；若同日已有任务（含手动分析页结果），取<strong>最新一条</strong>展示「组合经理」结论，主按钮为<strong>报告</strong>并附<strong>再次分析</strong>。各行请求互不等候。</p>
+          <p>热股与「异常」中 A 股代码：无记录时显示<strong>分析</strong>。行状态优先级：<strong>当前队列</strong>（queued / running / stopping / stopped）→ <strong>已完成报告</strong>（按 <code>ts_code</code> 取 <code>updated_at</code> 最新一条，<strong>仅展示今日生成</strong>；昨天及更早的不再回填到榜单行）→ 未分析。本页打开<strong>不会自动拉</strong> Tushare：DB 没快照时请点顶部「同步榜单」。<strong>「再次分析」 = <code>force_refresh: true</code> 强制重跑</strong>，不覆盖旧报告。队列面板不展示 completed；无法解析评级时显示<strong>已完成</strong>。</p>
         </section>`;
     }
 
@@ -1166,20 +1936,85 @@
     }
 
     function syncCalendarDateToDom() {
-      currentTradeDate = calendarTodayLocal();
-      currentTradeDateEl.textContent = currentTradeDate;
-      currentTradeDateEl.setAttribute("datetime", currentTradeDate);
+      setCurrentTradeDate(calendarTodayLocal());
+    }
+
+    function setCurrentTradeDate(date) {
+      const normalized = String(date || calendarTodayLocal()).trim();
+      currentTradeDate = normalized;
+      if (!normalized) return;
+      const hasOption = Array.from(currentTradeDateEl.options || []).some((option) => option.value === normalized);
+      if (!hasOption) {
+        currentTradeDateEl.appendChild(new Option(normalized, normalized));
+      }
+      currentTradeDateEl.value = normalized;
+    }
+
+    function buildCalendarDateOptions(days) {
+      const count = Math.max(1, Math.min(Number(days) || 30, 30));
+      const out = [];
+      const base = new Date();
+      for (let offset = 0; offset < count; offset += 1) {
+        const d = new Date(base);
+        d.setDate(base.getDate() - offset);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        out.push(`${y}-${m}-${day}`);
+      }
+      return out;
+    }
+
+    function setTradeDateOptions(dates) {
+      const items = Array.from(new Set((dates || []).map((date) => String(date || "").trim()).filter(Boolean))).slice(0, 30);
+      const fallback = calendarTodayLocal();
+      currentTradeDateEl.innerHTML = "";
+      for (const date of items.length ? items : [fallback]) {
+        currentTradeDateEl.appendChild(new Option(date, date));
+      }
+      setCurrentTradeDate(items[0] || fallback);
+    }
+
+    function showCachedDashboardFirstPaint() {
+      const usedHistory = loadCompletedHistorySnapshot();
+      const cachedDashboard = readHotRadarDashboardSnapshot(currentTradeDate, topN.value);
+      if (!cachedDashboard) {
+        if (usedHistory && cachedPayload) renderCandidatesFromCache();
+        return false;
+      }
+      applyDashboard(cachedDashboard);
+      if (hotRadarFallbackEl) {
+        hotRadarFallbackEl.hidden = false;
+        hotRadarFallbackEl.textContent = "已先显示本地快照，正在刷新后端数据；最终以 DB/API 返回为准。";
+      }
+      return true;
     }
 
     async function loadDashboardFromStore() {
       refreshSnapshotBtn.title = "";
+      const showedSnapshot = showCachedDashboardFirstPaint();
       try {
         const tradeDate = currentTradeDate;
-        const url = `/api/hot-radar?trade_date=${encodeURIComponent(tradeDate)}&batch_time=daily&top_n=${encodeURIComponent(topN.value)}`;
-        const [, response] = await Promise.all([prefetchAnalysisHistory(), fetch(url)]);
+        /* ``fetch_if_missing=false``: never auto-pull Tushare on page load — only ``同步榜单`` triggers a real fetch. */
+        const url = `/api/hot-radar?trade_date=${encodeURIComponent(tradeDate)}&batch_time=daily&top_n=${encodeURIComponent(topN.value)}&fetch_if_missing=false`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const body = await response.json();
+        const run = body.run || {};
+        const meta = body.meta || {};
+        const histDay = String(meta.resolved_trade_date || run.trade_date || tradeDate || "").trim();
+        const queue = await prefetchAnalysisHistory(histDay, meta, run);
         applyDashboard(body);
-      } catch (_) {
+        writeHotRadarDashboardSnapshot(tradeDate, topN.value, body);
+        renderAnalysisQueue(queue || latestAnalysisQueue);
+      } catch (error) {
+        if (showedSnapshot) {
+          if (hotRadarFallbackEl) {
+            hotRadarFallbackEl.hidden = false;
+            hotRadarFallbackEl.textContent = `本地快照：后端数据刷新失败，当前列表可能不是最新结果。${error?.message ? `（${error.message}）` : ""}`;
+          }
+          return;
+        }
         cachedPayload = null;
         candidateList.innerHTML = candidateEmptyHtml("无法连接到 /api/hot-radar。");
       }
@@ -1203,8 +2038,13 @@
         if (!response.ok) {
           throw new Error(errorBody.detail || `HTTP ${response.status}`);
         }
-        await prefetchAnalysisHistory();
+        const run = errorBody.run || {};
+        const meta = errorBody.meta || {};
+        const histDay = String(meta.resolved_trade_date || run.trade_date || currentTradeDate || "").trim();
+        const queue = await prefetchAnalysisHistory(histDay, meta, run);
         applyDashboard(errorBody);
+        writeHotRadarDashboardSnapshot(currentTradeDate, topN.value, errorBody);
+        renderAnalysisQueue(queue || latestAnalysisQueue);
       } catch (error) {
         refreshSnapshotBtn.title = error?.message || "刷新失败";
       } finally {
@@ -1212,41 +2052,127 @@
       }
     }
 
-    /** Fire-and-forget POST; each opens a new tab — does not block other rows when run_inline=false on server. */
-    async function enqueueAnalyzeFromHotRadar(tsCode, tradeDateHint, analyzeButton) {
-      const td = String(tradeDateHint || currentTradeDate || "").trim();
+    async function submitAnalysisModal() {
+      if (!activeAnalysisModalRow) return;
+      const analysts = selectedModalAnalysts();
+      if (!analysts.length) {
+        window.alert("请至少选择一个分析师团队。");
+        return;
+      }
+      const model = selectedModalModel();
       const payload = {
-        ts_code: tsCode,
-        trade_date: td,
-        analysts: ["market", "fundamentals", "news"],
-        research_depth: 1,
+        ts_code: activeAnalysisModalRow.tsCode,
+        stock_name: activeAnalysisModalRow.stockName,
+        trade_date: activeAnalysisModalRow.tradeDate,
+        analysts,
+        research_depth: selectedModalDepth(),
         llm_provider: "deepseek",
-        quick_model: "deepseek-v4-flash",
-        deep_model: "deepseek-v4-flash",
-        force_refresh: false,
+        quick_model: model,
+        deep_model: model,
+        origin: "hot_radar",
+        force_refresh: Boolean(activeAnalysisModalRow.forceRefresh),
       };
-      const label = analyzeButton.textContent;
-      analyzeButton.classList.add("analyze-busy");
-      analyzeButton.textContent = "…";
+      analysisModalSubmit.disabled = true;
       try {
         const response = await fetch("/api/analysis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const errBody = await response.json().catch(() => ({}));
-        if (!response.ok || !errBody.task_id) {
-          const detail =
-            typeof errBody.detail === "string" ? errBody.detail : errBody.detail ? JSON.stringify(errBody.detail) : response.statusText;
-          throw new Error(detail || "创建分析失败");
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.task_id) {
+          throw new Error(body.detail || response.statusText || "创建分析失败");
         }
-        window.open(`/?task_id=${encodeURIComponent(errBody.task_id)}`, "_blank", "noopener,noreferrer");
-      } catch (e) {
-        window.alert(`无法启动分析：${e.message || e}`);
+        closeAnalysisModal();
+        renderAnalysisQueue(await loadAnalysisQueue());
+        await loadDashboardFromStore();
+      } catch (error) {
+        window.alert(`无法加入分析队列：${error.message || error}`);
       } finally {
-        analyzeButton.textContent = label;
-        analyzeButton.classList.remove("analyze-busy");
+        analysisModalSubmit.disabled = false;
       }
+    }
+
+    function queueRowHtml(row) {
+      const req = row.request || {};
+      const code = req.ts_code || "—";
+      const name = req.stock_name || hotRadarNameForCode(code) || code;
+      const lane = row.lane || laneForQueueRequest(req);
+      const model = lane === "flash" ? "Flash" : "Pro";
+      const detail = `${model} · ${queueStatusLabel(row.status)} · ${req.trade_date || "—"}`;
+      let actions = "";
+      const tid = escapeHtml(row.task_id);
+      if (row.status === "queued") {
+        /* Queued tasks haven't started — nothing to render yet. No 「报告」 button here. */
+        actions = `
+          <button class="mini-btn mini-btn-muted" type="button" data-queue-action="up" data-task-id="${tid}">上移</button>
+          <button class="mini-btn mini-btn-muted" type="button" data-queue-action="down" data-task-id="${tid}">下移</button>
+          <button class="mini-btn mini-btn-muted" type="button" data-queue-action="delete" data-task-id="${tid}">删除</button>`;
+      } else if (row.status === "running" || row.status === "stopping") {
+        actions = `
+          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}" target="_blank" rel="noopener noreferrer">报告</a>
+          <button class="mini-btn mini-btn-muted" type="button" data-queue-action="stop" data-task-id="${tid}">停止</button>`;
+      } else if (row.status === "completed") {
+        actions = `
+          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}" target="_blank" rel="noopener noreferrer">报告</a>
+          <button class="mini-btn mini-btn-muted" type="button" data-queue-action="delete" data-task-id="${tid}">移除</button>`;
+      } else {
+        /* failed / stopped — link to the partial report; no rerun here (use Hot Radar 「再次分析」). */
+        actions = `
+          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}" target="_blank" rel="noopener noreferrer">报告</a>
+          <button class="mini-btn mini-btn-muted" type="button" data-queue-action="delete" data-task-id="${tid}">移除</button>`;
+      }
+      return `
+        <div class="queue-row">
+          <div><strong>${escapeHtml(name)} ${escapeHtml(code)}</strong><span>${escapeHtml(detail)}</span></div>
+          <div class="queue-actions">${actions}</div>
+        </div>`;
+    }
+
+    function renderAnalysisQueue(queue) {
+      const queuePanel = document.querySelector("#queue-panel");
+      if (!queuePanel) return;
+      const lanes = queue?.lanes || {};
+      const apiNotice = latestQueueApiAvailable
+        ? ""
+        : `<p class="insight-lead notice">队列接口暂不可用，已用本地任务记录恢复展示；重启后端后可完整调优先级/删除。</p>`;
+      queuePanel.innerHTML =
+        apiNotice +
+        ["pro", "flash"]
+        .map((laneKey) => {
+          const lane = lanes[laneKey] || { capacity: laneKey === "flash" ? 3 : 1, running: [], queued: [], finished: [] };
+          const rows = [...(lane.running || []), ...(lane.queued || []), ...(lane.finished || [])].filter(
+            (r) => String(r.status || "") !== "completed",
+          );
+          const title = laneKey === "flash" ? "Flash 队列" : "Pro 队列";
+          const body = rows.length ? rows.map(queueRowHtml).join("") : `<p class="insight-lead">暂无任务</p>`;
+          return `
+            <section class="queue-lane">
+              <header><strong>${title}</strong><span class="tag">并发 ${lane.capacity}</span></header>
+              ${body}
+            </section>`;
+        })
+        .join("");
+    }
+
+    async function loadAnalysisQueue() {
+      let queue = null;
+      try {
+        const response = await fetch("/api/analysis/queue");
+        if (response.ok) {
+          latestQueueApiAvailable = true;
+          queue = await response.json();
+        } else {
+          latestQueueApiAvailable = false;
+          queue = await loadAnalysisQueueFromHistory();
+        }
+      } catch (_) {
+        latestQueueApiAvailable = false;
+        queue = await loadAnalysisQueueFromHistory();
+      }
+      latestAnalysisQueue = mergeQueuePayloads(queue || emptyQueuePayload());
+      buildActiveQueueIndex(latestAnalysisQueue);
+      return latestAnalysisQueue;
     }
 
     topN.addEventListener("change", () => {
@@ -1254,22 +2180,115 @@
       loadDashboardFromStore();
     });
 
+    currentTradeDateEl.addEventListener("change", () => {
+      setCurrentTradeDate(currentTradeDateEl.value);
+      loadDashboardFromStore();
+    });
+
     refreshSnapshotBtn.addEventListener("click", refreshHotSnapshot);
+
+    document.addEventListener("pointerover", (event) => {
+      const target = event.target.closest("[data-detail]");
+      if (!target || detailPopoverPinned) return;
+      showDetailPopover(target, event, false);
+    });
+
+    document.addEventListener("pointermove", (event) => {
+      if (!detailPopover || detailPopover.hidden || detailPopoverPinned) return;
+      if (!event.target.closest("[data-detail]")) return;
+      placeDetailPopover(event.clientX, event.clientY);
+    });
+
+    document.addEventListener("pointerout", (event) => {
+      if (detailPopoverPinned) return;
+      if (event.target.closest("[data-detail]")) hideDetailPopover();
+    });
+
+    document.addEventListener("focusin", (event) => {
+      const target = event.target.closest("[data-detail]");
+      if (!target) return;
+      showDetailPopover(target, null, true);
+    });
+
+    document.addEventListener("focusout", (event) => {
+      if (event.target.closest("[data-detail]")) hideDetailPopover(true);
+    });
+
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-detail]");
+      if (!target) {
+        hideDetailPopover(true);
+        return;
+      }
+      showDetailPopover(target, event, true);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideDetailPopover(true);
+    });
 
     candidateList.addEventListener("click", (event) => {
       const analyzeHit = event.target.closest("[data-analyze-ts]");
       if (analyzeHit) {
         event.preventDefault();
-        enqueueAnalyzeFromHotRadar(
+        openAnalysisModal(
           analyzeHit.getAttribute("data-analyze-ts"),
           analyzeHit.getAttribute("data-trade-date"),
-          analyzeHit,
+          analyzeHit.getAttribute("data-analyze-name"),
+          analyzeHit.getAttribute("data-analyze-force") === "1",
         );
         return;
       }
-      const taskBtn = event.target.closest("[data-task-id]");
-      if (!taskBtn) return;
-      window.open(`/?task_id=${encodeURIComponent(taskBtn.dataset.taskId)}`, "_blank", "noopener,noreferrer");
+      /* 「报告」 is now an <a target="_blank">; let the browser handle navigation natively. */
+    });
+
+    modalAnalystButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const willSelect = !button.classList.contains("selected");
+        if (!willSelect && selectedModalAnalysts().length === 1) return;
+        button.classList.toggle("selected", willSelect);
+        button.setAttribute("aria-pressed", String(willSelect));
+      });
+    });
+
+    modalDepthButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setExclusiveModalGroup(modalDepthButtons, button.dataset.modalDepth, "modalDepth");
+      });
+    });
+
+    modalModelButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const model = button.dataset.modalModel;
+        if (!model) return;
+        localStorage.setItem(REPORT_MODEL_STORAGE_KEY, model);
+        setExclusiveModalGroup(modalModelButtons, model, "modalModel");
+      });
+    });
+
+    document.querySelector("#analysis-modal-close").addEventListener("click", closeAnalysisModal);
+    document.querySelector("#analysis-modal-cancel").addEventListener("click", closeAnalysisModal);
+    analysisModalSubmit.addEventListener("click", submitAnalysisModal);
+
+    document.addEventListener("click", async (event) => {
+      const actionBtn = event.target.closest("[data-queue-action]");
+      if (!actionBtn) return;
+      const taskId = actionBtn.dataset.taskId;
+      const action = actionBtn.dataset.queueAction;
+      if (!taskId || !action) return;
+      if (action === "stop") {
+        await fetch(`/api/analysis/${encodeURIComponent(taskId)}/stop`, { method: "POST" });
+      } else if (action === "delete") {
+        await fetch(`/api/analysis/queue/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+      } else {
+        await fetch(`/api/analysis/${encodeURIComponent(taskId)}/priority`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ direction: action }),
+        });
+      }
+      renderAnalysisQueue(await loadAnalysisQueue());
+      await loadDashboardFromStore();
     });
 
     tabButtons.forEach((button) => {
@@ -1285,8 +2304,11 @@
       });
     });
 
-    syncCalendarDateToDom();
+    setTradeDateOptions(buildCalendarDateOptions(30));
     loadDashboardFromStore();
+    setInterval(() => {
+      refreshHotRadarRowState().catch(() => {});
+    }, 12000);
   </script>
 </body>
 </html>

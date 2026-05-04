@@ -65,13 +65,11 @@ MODEL_OPTIONS: ProviderModeOptions = {
     },
     "deepseek": {
         "quick": [
-            ("DeepSeek V4 Flash - Default fast A-share chat", "deepseek-v4-flash"),
-            ("DeepSeek V4 Pro - Expert mode", "deepseek-v4-pro"),
+            ("DeepSeek V4 Pro - Standard A-share analysis", "deepseek-v4-pro"),
             ("Custom model ID", "custom"),
         ],
         "deep": [
-            ("DeepSeek V4 Pro - Expert mode", "deepseek-v4-pro"),
-            ("DeepSeek V4 Flash - Default fast A-share chat", "deepseek-v4-flash"),
+            ("DeepSeek V4 Pro - Deep A-share analysis", "deepseek-v4-pro"),
             ("Custom model ID", "custom"),
         ],
     },

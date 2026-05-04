@@ -60,6 +60,18 @@ def _daily_window(client, ts_code: str, api_date: str, days: int = 120, limit: i
     return records
 
 
+def resolve_stock_name(ts_code: str, client=None) -> str:
+    client = client or create_tushare_client()
+    stock_basic = getattr(client, "stock_basic", None)
+    if not callable(stock_basic):
+        return ""
+    try:
+        row = _first_record(stock_basic(ts_code=ts_code))
+    except Exception:
+        return ""
+    return str(row.get("name") or row.get("ts_name") or "").strip()
+
+
 def get_stock_snapshot(ts_code: str, trade_date: str, client=None) -> dict[str, Any]:
     client = client or create_tushare_client()
     api_date = _api_date(trade_date)
@@ -69,9 +81,13 @@ def get_stock_snapshot(ts_code: str, trade_date: str, client=None) -> dict[str, 
     daily_basic = _first_record(client.daily_basic(ts_code=ts_code, trade_date=resolved_api_date))
     ohlcv = _daily_window(client, ts_code, resolved_api_date)
 
+    name = str(daily.get("name") or daily.get("ts_name") or "").strip()
+    if not name:
+        name = resolve_stock_name(ts_code, client=client)
+
     return {
         "ts_code": ts_code,
-        "name": "",
+        "name": name,
         "requested_trade_date": trade_date,
         "trade_date": _display_date(resolved_api_date),
         "is_fallback": resolved_api_date != api_date,

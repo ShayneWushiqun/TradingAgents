@@ -30,7 +30,7 @@ class AnalysisCache:
                 self.cache_dirs.append(fallback)
 
     def key_for(self, request: AnalysisRequest) -> str:
-        payload = request.model_dump(exclude={"force_refresh"})
+        payload = request.model_dump(exclude={"force_refresh", "stock_name"})
         payload["analysts"] = list(payload.get("analysts") or [])
         payload["cache_version"] = CACHE_VERSION
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -51,6 +51,61 @@ class AnalysisCache:
     def latest(self) -> dict[str, Any] | None:
         for cache_dir in self.cache_dirs:
             path = cache_dir / "latest.json"
+            if not path.exists():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if data.get("cache_version") == CACHE_VERSION:
+                return data
+        return None
+
+    def iter_completed(self, limit: int | None = None) -> list[tuple[str, dict[str, Any], float]]:
+        """All cache entries ``(cache_key, payload, mtime_seconds)`` newest first.
+
+        Used as a persistent fallback for ``AnalysisService.history(status='completed')``
+        when no ``AnalysisStore`` is configured: the on-disk cache files are the only
+        durable evidence that an analysis ever completed across server reloads.
+
+        """
+
+        seen: set[str] = set()
+        rows: list[tuple[str, dict[str, Any], float]] = []
+        for cache_dir in self.cache_dirs:
+            if not cache_dir.exists():
+                continue
+            for path in cache_dir.iterdir():
+                if path.suffix != ".json" or path.stem == "latest":
+                    continue
+                cache_key = path.stem
+                if cache_key in seen:
+                    continue
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if data.get("cache_version") != CACHE_VERSION:
+                    continue
+                try:
+                    mtime = path.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                seen.add(cache_key)
+                rows.append((cache_key, data, mtime))
+        rows.sort(key=lambda item: item[2], reverse=True)
+        if limit is not None:
+            rows = rows[: max(1, int(limit))]
+        return rows
+
+    def load_by_key(self, cache_key: str) -> dict[str, Any] | None:
+        """Direct lookup by cache key (sha256 hex), bypassing request hashing."""
+
+        key = str(cache_key or "").strip()
+        if not key:
+            return None
+        for cache_dir in self.cache_dirs:
+            path = cache_dir / f"{key}.json"
             if not path.exists():
                 continue
             try:

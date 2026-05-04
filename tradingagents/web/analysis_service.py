@@ -1,8 +1,11 @@
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
+import re
 import threading
 
 from tradingagents.agents.utils.rating import parse_rating
+from tradingagents.dataflows.tushare_stock import resolve_stock_name
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.checkpointer import clear_checkpoint
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -15,6 +18,35 @@ from .tasks import AnalysisTask, TaskRegistry, extract_report_sections
 
 AnalysisRunner = Callable[[AnalysisRequest, dict, Callable[[str, dict], None]], tuple[dict, str]]
 RAW_LOG_TICKER_ERROR = "unsupported operand type(s) for /: 'PosixPath' and 'NoneType'"
+
+
+def _clean_extracted_stock_name(value: str) -> str:
+    name = re.sub(r"[`\"'“”‘’\s]+", "", str(value or "")).strip()
+    if not re.search(r"[\u4e00-\u9fff]", name):
+        return ""
+    if name in {"股票代码", "证券代码", "代码", "报告日期", "分析日期", "交易日"}:
+        return ""
+    return name if len(name) <= 40 else ""
+
+
+def _extract_stock_name_from_text(text: str, ts_code: str) -> str:
+    code = str(ts_code or "").strip().upper()
+    if not re.fullmatch(r"\d{6}\.(SH|SZ|BJ)", code):
+        return ""
+    body = str(text or "")
+    if not body:
+        return ""
+    code_pattern = re.escape(code)
+    patterns = [
+        rf"`?\s*{code_pattern}\s*`?\s*[（(]\s*([^（）()\n\r]{{2,40}})\s*[）)]",
+        rf"([^，。；;：:\n\r（）()]{{2,40}})\s*[（(]\s*(?:股票代码|证券代码)?\s*[:：]?\s*`?\s*{code_pattern}\s*`?\s*[）)]",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, body, flags=re.IGNORECASE)
+        name = _clean_extracted_stock_name(match.group(1) if match else "")
+        if name:
+            return name
+    return ""
 
 
 class AnalysisService:
@@ -33,8 +65,10 @@ class AnalysisService:
         self.cache = cache or AnalysisCache()
         self.runtime_dir = Path(runtime_dir) if runtime_dir is not None else None
         self.store = store
+        self._dispatch_lock = threading.RLock()
 
     def create_task(self, request: AnalysisRequest) -> AnalysisTask:
+        request = self._with_stock_name(request)
         task = self.registry.create(request)
         self._sync_store(task)
         if not request.force_refresh:
@@ -43,14 +77,11 @@ class AnalysisService:
                 self.registry.complete_from_cache(task.task_id, cached)
                 self._sync_store(task)
                 return task
-        if self.run_inline:
-            self._run_task(task)
-        else:
-            thread = threading.Thread(target=self._run_task, args=(task,), daemon=True)
-            thread.start()
+        self._dispatch_queue()
         return task
 
     def restore_cached_task(self, request: AnalysisRequest) -> AnalysisTask | None:
+        request = self._with_stock_name(request)
         cached = self.cache.get(request)
         if cached is None:
             return None
@@ -58,6 +89,110 @@ class AnalysisService:
         self.registry.complete_from_cache(task.task_id, cached)
         self._sync_store(task)
         return task
+
+    def queue_status(self) -> dict:
+        lanes = {}
+        seen: set[str] = set()
+        for lane, capacity in (("pro", 1), ("flash", 3)):
+            lanes[lane] = {
+                "capacity": capacity,
+                "running": [self._task_queue_payload(task) for task in self.registry.running_for_lane(lane)],
+                "queued": [self._task_queue_payload(task) for task in self.registry.queued_for_lane(lane)],
+                "finished": [
+                    self._task_queue_payload(task)
+                    for task in self.registry.queue_visible_for_lane(
+                        lane,
+                        {"failed", "stopped", "stopping"},
+                    )
+                ],
+            }
+            for group in ("running", "queued", "finished"):
+                seen.update(row["task_id"] for row in lanes[lane][group])
+        self._merge_store_active_tasks_into_queue(lanes, seen)
+        return {"lanes": lanes}
+
+    def delete_queue_entry(self, task_id: str) -> dict | None:
+        task = self.get_task(task_id)
+        if task is None:
+            return None
+        if task.status in {"queued", "stopped"}:
+            memory_deleted = self.registry.delete(task_id) is not None
+            store_deleted = False
+            if self.store is not None:
+                store_deleted = self.store.delete_task(task_id)
+            deleted = bool(memory_deleted or store_deleted)
+            return {
+                "deleted": deleted,
+                "removed_from_queue": deleted,
+                "task_id": task_id,
+                "status": task.status,
+            }
+        task = self.registry.mark_removed_from_queue(task_id)
+        if task is None:
+            return None
+        self._sync_store(task)
+        return {
+            "deleted": False,
+            "removed_from_queue": True,
+            "task_id": task_id,
+            "status": task.status,
+        }
+
+    def stop_task(self, task_id: str) -> dict | None:
+        memory_task = self.registry.get(task_id)
+        task = memory_task or self.get_task(task_id)
+        if task is None:
+            return None
+        if task.status == "queued":
+            stopped = self.registry.mark_stopped(task_id)
+            if stopped is not None:
+                self._sync_store(stopped)
+            return {"task_id": task_id, "status": "stopped", "stop_requested": True}
+        if task.status == "stopping":
+            """Idempotent stop: a second click force-clears a runner-stuck ``stopping`` state.
+
+            Without this, tasks whose runner already exited (server reload, crash,
+            or runner short-circuit) would be permanently stuck at ``stopping`` and
+            the UI would show「停止」 forever with no effect.
+
+            """
+            stopped = self.registry.mark_stopped(task_id)
+            if stopped is not None:
+                self._sync_store(stopped)
+                self._dispatch_queue()
+            return {"task_id": task_id, "status": "stopped", "stop_requested": True}
+        if task.status == "running":
+            if memory_task is None:
+                stopped = self.registry.mark_stopped(task_id)
+                if stopped is not None:
+                    self._sync_store(stopped)
+                self._dispatch_queue()
+                return {"task_id": task_id, "status": "stopped", "stop_requested": True}
+            task.stop_requested = True
+            task.status = "stopping"
+            self._sync_store(task)
+            self._dispatch_queue()
+            return {"task_id": task_id, "status": "stopping", "stop_requested": True}
+        return {"task_id": task_id, "status": task.status, "stop_requested": task.stop_requested}
+
+    def move_queue_task(self, task_id: str, direction: str) -> dict | None:
+        task = self.get_task(task_id)
+        if task is None:
+            return None
+        if task.status != "queued":
+            return {"task_id": task_id, "status": task.status, "moved": False}
+        lane_tasks = self.registry.queued_for_lane(task.lane)
+        index = next((i for i, item in enumerate(lane_tasks) if item.task_id == task_id), -1)
+        if index < 0:
+            return {"task_id": task_id, "status": task.status, "moved": False}
+        target = index - 1 if direction == "up" else index + 1 if direction == "down" else index
+        if target < 0 or target >= len(lane_tasks) or target == index:
+            return {"task_id": task_id, "status": task.status, "moved": False}
+        other = lane_tasks[target]
+        task.queue_position, other.queue_position = other.queue_position, task.queue_position
+        self._sync_store(task)
+        self._sync_store(other)
+        return {"task_id": task_id, "status": task.status, "moved": True}
 
     def latest_task(self) -> AnalysisTask | None:
         task = self.registry.latest()
@@ -84,12 +219,97 @@ class AnalysisService:
         if task is not None:
             self._repair_task_status(task)
             return task
+        if isinstance(task_id, str) and task_id.startswith("cache:"):
+            cache_key = task_id[len("cache:") :]
+            data = self.cache.load_by_key(cache_key)
+            if data is None:
+                return None
+            try:
+                request = AnalysisRequest(**(data.get("request") or {}))
+            except Exception:
+                return None
+            request = self._with_stock_name(request)
+            restored = self.registry.restore(
+                task_id,
+                request,
+                "completed",
+                report_sections=data.get("report_sections") or {},
+                final_decision=str(data.get("final_decision") or ""),
+                decision=str(data.get("decision") or ""),
+                cached=True,
+            )
+            self._sync_store(restored)
+            return restored
         if self.store is None:
             return None
         stored = self.store.get_task(task_id)
         if stored is None:
             return None
         return self._restore_stored_task(stored)
+
+    def clear_completed_history(self) -> dict:
+        """One-shot purge of all completed analyses (Reports「一键清空」).
+
+        Removes:
+          1. ``status='completed'`` rows in the persistent store (if configured).
+          2. In-memory registry entries with ``status='completed'``.
+          3. Every cache JSON in :attr:`AnalysisCache.cache_dirs` (the only durable
+             evidence when no store is configured).
+          4. Best-effort runtime report files / checkpoints derived from each
+             completed entry's ``request``.
+
+        Running / queued / stopping / failed / stopped tasks are not touched.
+
+        """
+
+        deleted_tasks: int = 0
+        deleted_cache_files: int = 0
+        deleted_runtime_files: int = 0
+
+        completed_requests: list[AnalysisRequest] = []
+
+        if self.store is not None:
+            for raw in self.store.history(limit=200, status="completed"):
+                req_dict = raw.get("request") or {}
+                try:
+                    completed_requests.append(AnalysisRequest(**req_dict))
+                except Exception:
+                    pass
+                tid = str(raw.get("task_id") or "")
+                if tid and self.store.delete_task(tid):
+                    deleted_tasks += 1
+
+        for task in self.registry.list_recent(200, status="completed"):
+            completed_requests.append(task.request)
+            if self.registry.delete(task.task_id) is not None:
+                deleted_tasks += 1
+
+        for cache_dir in self.cache.cache_dirs:
+            if not cache_dir.exists():
+                continue
+            for path in cache_dir.iterdir():
+                if path.suffix != ".json":
+                    continue
+                try:
+                    path.unlink()
+                    deleted_cache_files += 1
+                except OSError:
+                    continue
+
+        seen_keys: set[str] = set()
+        for request in completed_requests:
+            key = self.cache.key_for(request)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deleted_runtime_files += len(self._delete_runtime_report_files(request))
+            self._clear_runtime_checkpoint(request)
+
+        return {
+            "deleted_tasks": deleted_tasks,
+            "deleted_cache_files": deleted_cache_files,
+            "deleted_runtime_files": deleted_runtime_files,
+        }
 
     def delete_task(self, task_id: str) -> dict | None:
         task = self.get_task(task_id)
@@ -120,9 +340,28 @@ class AnalysisService:
             "blocked": False,
         }
 
-    def _run_task(self, task: AnalysisTask) -> None:
+    def _dispatch_queue(self) -> None:
+        with self._dispatch_lock:
+            for lane, capacity in (("pro", 1), ("flash", 3)):
+                available = capacity - len(self.registry.running_for_lane(lane))
+                if available <= 0:
+                    continue
+                for task in self.registry.queued_for_lane(lane)[:available]:
+                    self._start_task(task)
+
+    def _start_task(self, task: AnalysisTask) -> None:
         self.registry.start(task.task_id)
         self._sync_store(task)
+        if self.run_inline:
+            self._run_task(task, already_started=True)
+            return
+        thread = threading.Thread(target=self._run_task, args=(task, True), daemon=True)
+        thread.start()
+
+    def _run_task(self, task: AnalysisTask, already_started: bool = False) -> None:
+        if not already_started:
+            self.registry.start(task.task_id)
+            self._sync_store(task)
         self.registry.add_event(
             task.task_id,
             "task_progress",
@@ -154,38 +393,239 @@ class AnalysisService:
             )
             final_state, decision = self.runner(task.request, self.build_config(task.request), emit)
         except Exception as exc:  # pragma: no cover - exact provider errors vary
+            if task.stop_requested or task.status == "stopping":
+                stopped = self.registry.mark_stopped(task.task_id)
+                if stopped is not None:
+                    self._sync_store(stopped)
+                self._dispatch_queue()
+                return
             self.registry.fail(task.task_id, str(exc))
             self._sync_store(task)
+            self._dispatch_queue()
+            return
+
+        if task.stop_requested or task.status == "stopping":
+            stopped = self.registry.mark_stopped(task.task_id)
+            if stopped is not None:
+                self._sync_store(stopped)
+            self._dispatch_queue()
             return
 
         report_sections = {**task.report_sections, **extract_report_sections(final_state)}
         self.cache.set(task.request, final_state, decision, report_sections)
         self.registry.complete(task.task_id, final_state, decision)
         self._sync_store(task)
+        self._dispatch_queue()
 
-    def history(self, limit: int = 50) -> list[dict]:
+    def history(self, limit: int = 50, status: str | None = None) -> list[dict]:
+        """Merged history from (1) persistent store, (2) in-memory registry, (3) on-disk cache.
+
+        On-disk cache is the only **durable** evidence of completion when no
+        ``AnalysisStore`` is configured — without merging it in, every server
+        reload would visually erase past completed analyses from Hot Radar.
+
+        """
+
         capped = max(1, min(int(limit), 200))
+        wanted = str(status or "").strip()
+
+        rows: list[dict] = []
+        seen_ids: set[str] = set()
+        seen_keys: set[str] = set()
+
+        def absorb(row: dict) -> None:
+            row_status = str(row.get("status") or "")
+            if wanted and row_status != wanted:
+                return
+            tid = str(row.get("task_id") or "")
+            ck = str(row.get("cache_key") or "")
+            if tid and tid in seen_ids:
+                return
+            if ck and ck in seen_keys:
+                return
+            if tid:
+                seen_ids.add(tid)
+            if ck:
+                seen_keys.add(ck)
+            rows.append(row)
+
         if self.store is not None:
-            return [self._repair_stored_status(row) for row in self.store.history(limit=capped)]
-        task = self.registry.latest()
-        if task is None:
-            return []
-        self._repair_task_status(task)
-        return [
-            {
-                "task_id": task.task_id,
-                "status": task.status,
-                "request": task.request.model_dump(),
-                "cached": task.cached,
-                "cache_key": self.cache.key_for(task.request),
-                "final_decision": task.final_decision,
-                "decision": task.decision,
-                "error": task.error,
-                "report_sections": task.report_sections,
-                "created_at": task.created_at.isoformat() + "Z",
-                "updated_at": task.updated_at.isoformat() + "Z",
-            }
-        ]
+            store_buckets: list[list[dict]] = []
+            if wanted == "completed":
+                store_buckets.append(self.store.history(limit=200, status="completed"))
+                """Repair pass: failed rows with usable final_decision become completed on read."""
+                store_buckets.append(self.store.history(limit=200, status="failed"))
+            elif wanted:
+                store_buckets.append(self.store.history(limit=200, status=wanted))
+            else:
+                store_buckets.append(self.store.history(limit=200))
+            for raw in [row for bucket in store_buckets for row in bucket]:
+                absorb(self._enrich_history_row_dict(self._repair_stored_status(raw)))
+
+        for task in self.registry.list_recent(200, status=wanted or None):
+            self._repair_task_status(task)
+            absorb(
+                self._enrich_history_row_dict(
+                    {
+                        "task_id": task.task_id,
+                        "status": task.status,
+                        "request": task.request.model_dump(),
+                        "cached": task.cached,
+                        "cache_key": self.cache.key_for(task.request),
+                        "final_decision": task.final_decision,
+                        "decision": task.decision,
+                        "error": task.error,
+                        "report_sections": task.report_sections,
+                        "created_at": task.created_at.isoformat() + "Z",
+                        "updated_at": task.updated_at.isoformat() + "Z",
+                    }
+                )
+            )
+
+        if not wanted or wanted == "completed":
+            for cache_key, data, mtime in self.cache.iter_completed():
+                if cache_key in seen_keys:
+                    continue
+                req_dict = data.get("request") or {}
+                try:
+                    request = AnalysisRequest(**req_dict)
+                except Exception:
+                    continue
+                iso = (
+                    datetime.utcfromtimestamp(mtime).isoformat(timespec="microseconds") + "Z"
+                    if mtime
+                    else ""
+                )
+                absorb(
+                    self._enrich_history_row_dict(
+                        {
+                            "task_id": f"cache:{cache_key}",
+                            "status": "completed",
+                            "request": request.model_dump(),
+                            "cached": True,
+                            "cache_key": cache_key,
+                            "final_decision": str(data.get("final_decision") or ""),
+                            "decision": str(data.get("decision") or ""),
+                            "error": "",
+                            "report_sections": data.get("report_sections") or {},
+                            "created_at": iso,
+                            "updated_at": iso,
+                        }
+                    )
+                )
+
+        rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
+        return rows[:capped]
+
+    def _needs_stock_name_resolution(self, request: AnalysisRequest) -> bool:
+        sn = (request.stock_name or "").strip()
+        if not sn:
+            return True
+        return sn.upper() == request.ts_code.upper()
+
+    def enrich_request_for_response(self, request: AnalysisRequest) -> AnalysisRequest:
+        """Fill ``stock_name`` from Tushare when missing or placeholder (does not affect cache_key)."""
+
+        return self._with_stock_name(request)
+
+    def _enrich_history_row_dict(self, row: dict) -> dict:
+        row = dict(row)
+        req_dict = dict(row.get("request") or {})
+        try:
+            request = AnalysisRequest(**req_dict)
+        except Exception:
+            return row
+        enriched = self._with_stock_name(request)
+        if self._needs_stock_name_resolution(enriched):
+            inferred = self._stock_name_from_report_row(row, request.ts_code)
+            if inferred:
+                enriched = enriched.model_copy(update={"stock_name": inferred})
+        row["request"] = enriched.model_dump()
+        return row
+
+    def _with_stock_name(self, request: AnalysisRequest) -> AnalysisRequest:
+        if not self._needs_stock_name_resolution(request):
+            return request
+        try:
+            name = resolve_stock_name(request.ts_code)
+        except Exception:
+            name = ""
+        if not name:
+            return request
+        return request.model_copy(update={"stock_name": name})
+
+    def _stock_name_from_report_row(self, row: dict, ts_code: str) -> str:
+        chunks: list[str] = []
+        report_sections = row.get("report_sections") or {}
+        if isinstance(report_sections, dict):
+            chunks.extend(str(value) for value in report_sections.values() if isinstance(value, str))
+        for key in ("final_decision", "decision"):
+            value = row.get(key)
+            if isinstance(value, str):
+                chunks.append(value)
+        for chunk in chunks:
+            name = _extract_stock_name_from_text(chunk, ts_code)
+            if name:
+                return name
+        return ""
+
+    def _task_queue_payload(self, task: AnalysisTask) -> dict:
+        return {
+            "task_id": task.task_id,
+            "status": task.status,
+            "request": task.request.model_dump(),
+            "origin": task.origin,
+            "lane": task.lane,
+            "priority": task.priority,
+            "queue_position": task.queue_position,
+            "stop_requested": task.stop_requested,
+            "removed_from_queue": task.removed_from_queue,
+            "cached": task.cached,
+            "decision": task.decision,
+            "error": task.error,
+            "created_at": task.created_at.isoformat() + "Z",
+            "updated_at": task.updated_at.isoformat() + "Z",
+        }
+
+    def _merge_store_active_tasks_into_queue(self, lanes: dict, seen: set[str]) -> None:
+        if self.store is None:
+            return
+        for stored in self.store.history(limit=200):
+            stored = self._repair_stored_status(stored)
+            task_id = str(stored.get("task_id") or "")
+            status = str(stored.get("status") or "")
+            if not task_id or task_id in seen or status not in {"queued", "running", "stopping"}:
+                continue
+            try:
+                request = AnalysisRequest(**stored["request"])
+            except Exception:
+                continue
+            if self._needs_stock_name_resolution(request):
+                request = self._with_stock_name(request)
+            lane = TaskRegistry.lane_for_request(request)
+            target = "queued" if status == "queued" else "running"
+            lanes.setdefault(
+                lane,
+                {"capacity": 3 if lane == "flash" else 1, "running": [], "queued": [], "finished": []},
+            )[target].append(
+                {
+                    "task_id": task_id,
+                    "status": status,
+                    "request": request.model_dump(),
+                    "origin": request.origin,
+                    "lane": lane,
+                    "priority": TaskRegistry.priority_for_request(request),
+                    "queue_position": len(lanes[lane][target]) + 1,
+                    "stop_requested": status == "stopping",
+                    "removed_from_queue": False,
+                    "cached": bool(stored.get("cached")),
+                    "decision": str(stored.get("decision") or ""),
+                    "error": str(stored.get("error") or ""),
+                    "created_at": str(stored.get("created_at") or ""),
+                    "updated_at": str(stored.get("updated_at") or ""),
+                },
+            )
+            seen.add(task_id)
 
     def _sync_store(self, task: AnalysisTask) -> None:
         if self.store is None:

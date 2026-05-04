@@ -79,10 +79,10 @@ def test_hot_radar_run_creates_lightweight_analysis_tasks(tmp_path):
     assert len(payload["items"]["热股"]) == 2
     assert len(payload["analysis_tasks"]) == 2
     assert seen_requests[0].ts_code == "000988.SZ"
-    assert seen_requests[0].quick_model == "deepseek-v4-flash"
-    assert seen_requests[0].deep_model == "deepseek-v4-flash"
+    assert seen_requests[0].quick_model == "deepseek-v4-pro"
+    assert seen_requests[0].deep_model == "deepseek-v4-pro"
     assert seen_requests[0].force_refresh is True
-    assert seen_requests[0].research_depth == 1
+    assert seen_requests[0].research_depth == 3
 
 
 def test_hot_radar_history_returns_saved_batch_without_rerun(tmp_path):
@@ -112,6 +112,76 @@ def test_hot_radar_history_returns_saved_batch_without_rerun(tmp_path):
     assert payload["run"]["trade_date"] == "2026-04-30"
     assert payload["items"]["热股"][0]["ts_code"] == "000988.SZ"
     assert payload["analysis_tasks"][0]["status"] == "completed"
+    assert payload["meta"]["used_fallback"] is False
+    assert payload["meta"]["resolved_trade_date"] == "2026-04-30"
+
+
+def test_hot_radar_get_dashboard_falls_back_to_older_trade_date(tmp_path):
+    """Newer requested day has no rows; return latest older day that does."""
+
+    def snapshot_getter(trade_date, top_n):
+        raise AssertionError("fetch_if_missing is false; snapshot getter must not run")
+
+    analysis_service = AnalysisService(
+        TaskRegistry(),
+        runner=lambda request, config, emit: ({"final_trade_decision": "Rating: Hold"}, "Hold"),
+        run_inline=True,
+        runtime_dir=tmp_path,
+    )
+    service = HotRadarService(
+        analysis_service=analysis_service,
+        database_url=f"sqlite:///{tmp_path / 'hot-radar.sqlite3'}",
+        hot_snapshot_getter=snapshot_getter,
+        trade_dates_getter=lambda end_date, limit: ["2026-05-04", "2026-05-03", "2026-04-30"],
+    )
+    service.store.save_run(
+        run_id="r1",
+        trade_date="2026-04-30",
+        batch_time="daily",
+        top_n=2,
+        status="hot_only",
+        items=_snapshot()["markets"],
+        analysis_tasks=[],
+    )
+
+    payload = service.get_dashboard("2026-05-04", "daily", top_n=2, fetch_if_missing=False)
+
+    assert payload["run"]["trade_date"] == "2026-04-30"
+    assert payload["meta"]["used_fallback"] is True
+    assert payload["meta"]["requested_trade_date"] == "2026-05-04"
+    assert payload["meta"]["resolved_trade_date"] == "2026-04-30"
+
+
+def test_hot_radar_force_sync_walks_back_thirty_days_until_snapshot_has_rows(tmp_path):
+    calls = []
+
+    def snapshot_getter(trade_date, top_n):
+        calls.append(trade_date)
+        if trade_date != "2026-04-30":
+            return {"trade_date": trade_date, "top_n": top_n, "markets": {"热股": [], "ETF": [], "行业板块": [], "概念板块": []}}
+        return _snapshot()
+
+    analysis_service = AnalysisService(
+        TaskRegistry(),
+        runner=lambda request, config, emit: ({"final_trade_decision": "Rating: Hold"}, "Hold"),
+        run_inline=True,
+        runtime_dir=tmp_path,
+    )
+    service = HotRadarService(
+        analysis_service=analysis_service,
+        database_url=f"sqlite:///{tmp_path / 'hot-radar.sqlite3'}",
+        hot_snapshot_getter=snapshot_getter,
+        trade_dates_getter=lambda end_date, limit: ["2026-04-30"],
+    )
+
+    payload = service.sync_hot_snapshot_from_source("2026-05-04", "daily", top_n=2, force_refresh=True)
+
+    assert calls == ["2026-05-04", "2026-05-03", "2026-05-02", "2026-05-01", "2026-04-30"]
+    assert payload["run"]["trade_date"] == "2026-04-30"
+    assert payload["items"]["热股"][0]["ts_code"] == "000988.SZ"
+    assert payload["meta"]["requested_trade_date"] == "2026-05-04"
+    assert payload["meta"]["resolved_trade_date"] == "2026-04-30"
+    assert payload["meta"]["used_fallback"] is True
 
 
 def test_hot_radar_does_not_repull_hot_only_on_repeat_get_but_force_sync_updates(tmp_path):

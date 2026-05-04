@@ -15,5 +15,6 @@ def create_tushare_client():
 
     import tushare as ts
 
-    ts.set_token(token)
-    return ts.pro_api()
+    # Pass token into pro_api so tushare does not call set_token() (writes ~/tk.csv),
+    # which can raise PermissionError under hardened / sandboxed home dirs.
+    return ts.pro_api(token)

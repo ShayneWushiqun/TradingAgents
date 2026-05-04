@@ -496,7 +496,7 @@
         <div class="composer-toolbar">
           <div class="mode-actions" aria-label="对话模式">
             <button class="quick-toggle active" type="button" id="quick-mode-toggle" aria-pressed="true">
-              快速模式
+              标准模式
             </button>
             <button class="expert-toggle" type="button" id="expert-mode-toggle" aria-pressed="false" title="开启后使用更深度的模型回答">
               专家模式
@@ -858,7 +858,7 @@
         return null;
       }
       if (eventName === "llm_started") {
-        appendAgentTraceStep(message, `调用模型：${data.llm_model || "deepseek-v4-flash"}`, "active");
+        appendAgentTraceStep(message, `调用模型：${data.llm_model || "deepseek-v4-pro"}`, "active");
         return null;
       }
       if (eventName === "answer_delta") {

@@ -26,6 +26,11 @@
       font-size: 13px;
     }
 
+    .toolbar-actions {
+      display: flex;
+      gap: 8px;
+    }
+
     button,
     .button-link {
       height: 40px;
@@ -202,24 +207,28 @@
       <div class="toolbar">
         <div>
           <h2>历史报告</h2>
-          <p>报告列表展示所有分析任务，完成报告可载入缓存并回到工作台查看。</p>
+          <p>只展示已完成报告；排队和分析中的任务请在 Hot Radar 的当前分析队列中查看。</p>
         </div>
-        <button id="refresh-reports">刷新列表</button>
+        <div class="toolbar-actions">
+          <button id="refresh-reports">刷新列表</button>
+          <button id="clear-reports" class="danger" type="button">一键清空</button>
+        </div>
       </div>
 
       <section class="report-layout">
         <div class="card">
           <h3>报告列表</h3>
           <div class="report-list" id="report-list">
-            <div class="detail-muted">正在读取 /api/analysis/history...</div>
+            <div class="detail-muted">正在读取 /api/analysis/history?status=completed...</div>
           </div>
         </div>
 
         <aside class="card" id="report-detail">
           <h3>任务状态</h3>
-          <p class="detail-muted">选择左侧任意历史报告，查看任务参数、缓存键、状态和已保存的报告片段。</p>
+          <p class="detail-muted">选择左侧任意已完成报告，查看任务参数、缓存键、状态和已保存的报告片段。</p>
           <div class="detail-grid">
             <div class="detail-cell"><span>股票代码</span><strong id="detail-code">--</strong></div>
+            <div class="detail-cell"><span>股票名称</span><strong id="detail-name">--</strong></div>
             <div class="detail-cell"><span>交易日</span><strong id="detail-date">--</strong></div>
             <div class="detail-cell"><span>状态</span><strong id="detail-status">--</strong></div>
             <div class="detail-cell"><span>报告片段</span><strong id="detail-sections">--</strong></div>
@@ -233,9 +242,210 @@
   </div>
 
   <script>
+    const reportNameCache = new Map();
+    /* 本地快照只用于首屏加速；刷新完成后一切以 DB 为准。 */
+    const REPORTS_HISTORY_CACHE_KEY = "TRADINGAGENTS_REPORTS_HISTORY_SNAPSHOT_V1";
+    const REPORTS_HISTORY_CACHE_LIMIT = 120;
+
+    function safeReadJson(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function safeWriteJson(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (_) {
+        /* localStorage is only a cache; DB remains the source of truth. */
+      }
+    }
+
+    function safeRemoveStorage(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function resolveStockDisplayName(tsCode, explicitName = "") {
+      const code = String(tsCode || "").trim().toUpperCase();
+      const direct = String(explicitName || "").trim();
+      if (direct && direct.toUpperCase() !== code) return direct;
+      if (!code || code === "--") return "";
+      const cached = reportNameCache.get(code);
+      return cached !== undefined && cached ? cached : "";
+    }
+
+    function escapeRegex(value) {
+      return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function cleanExtractedStockName(value) {
+      const name = String(value || "")
+        .replace(/[`"'“”‘’]/g, "")
+        .replace(/\s+/g, "")
+        .trim();
+      if (!/[\u4e00-\u9fff]/.test(name)) return "";
+      if (/^(股票代码|证券代码|代码|报告日期|分析日期|交易日)$/.test(name)) return "";
+      return name.length <= 40 ? name : "";
+    }
+
+    function extractStockNameFromText(text, tsCode) {
+      const code = String(tsCode || "").trim().toUpperCase();
+      if (!/^\d{6}\.(SH|SZ|BJ)$/.test(code)) return "";
+      const body = String(text || "");
+      if (!body) return "";
+      const codePattern = escapeRegex(code);
+      const patterns = [
+        new RegExp("`?\\s*" + codePattern + "\\s*`?\\s*[（(]\\s*([^（）()\\n\\r]{2,40})\\s*[）)]", "i"),
+        new RegExp("([^，。；;：:\\n\\r（）()]{2,40})\\s*[（(]\\s*(?:股票代码|证券代码)?\\s*[:：]?\\s*`?\\s*" + codePattern + "\\s*`?\\s*[）)]", "i"),
+      ];
+      for (const pattern of patterns) {
+        const match = body.match(pattern);
+        const name = cleanExtractedStockName(match?.[1]);
+        if (name) return name;
+      }
+      return "";
+    }
+
+    function extractStockNameFromReport(item, tsCode) {
+      const chunks = [];
+      const sections = item?.report_sections || {};
+      Object.values(sections).forEach((value) => {
+        if (typeof value === "string") chunks.push(value);
+      });
+      if (typeof item?.final_decision === "string") chunks.push(item.final_decision);
+      if (typeof item?.decision === "string") chunks.push(item.decision);
+      for (const chunk of chunks) {
+        const name = extractStockNameFromText(chunk, tsCode);
+        if (name) return name;
+      }
+      return "";
+    }
+
+    async function fetchStockDisplayName(tsCode, explicitFromRequest = "") {
+      const code = String(tsCode || "").trim().toUpperCase();
+      const direct = String(explicitFromRequest || "").trim();
+      if (direct && direct.toUpperCase() !== code) {
+        reportNameCache.set(code, direct);
+        return direct;
+      }
+      if (!/^\d{6}\.(SH|SZ|BJ)$/.test(code)) return "";
+      if (reportNameCache.has(code)) return reportNameCache.get(code);
+      try {
+        const response = await fetch(`/api/stocks/${encodeURIComponent(code)}/name`);
+        const body = await response.json().catch(() => ({}));
+        const n = String(body.stock_name || "").trim();
+        reportNameCache.set(code, n);
+        return n;
+      } catch (_) {
+        reportNameCache.set(code, "");
+        return "";
+      }
+    }
+
+    async function hydrateReportNames(items) {
+      const out = [];
+      for (const item of items) {
+        const next = { ...item };
+        const req = { ...(next.request || {}) };
+        const ts = req.ts_code || next.ts_code || "";
+        const rawName = String(req.stock_name || next.stock_name || "").trim();
+        let name =
+          rawName && rawName.toUpperCase() !== String(ts).toUpperCase() ? rawName : "";
+        if (!name) {
+          name = await fetchStockDisplayName(ts, rawName);
+        }
+        if (!name) {
+          name = extractStockNameFromReport(next, ts);
+          if (name) reportNameCache.set(String(ts).trim().toUpperCase(), name);
+        }
+        if (name) req.stock_name = name;
+        next.request = req;
+        out.push(next);
+      }
+      return out;
+    }
+
+    function slimReportForStorage(item) {
+      if (!item) return null;
+      const req = item.request || {};
+      const sections = item.report_sections || {};
+      return {
+        task_id: item.task_id || "",
+        status: item.status || "",
+        request: {
+          ts_code: req.ts_code || item.ts_code || "",
+          stock_name: req.stock_name || item.stock_name || "",
+          trade_date: req.trade_date || item.trade_date || "",
+          llm_provider: req.llm_provider || "",
+          quick_model: req.quick_model || "",
+          deep_model: req.deep_model || "",
+          research_depth: req.research_depth ?? "",
+        },
+        cached: Boolean(item.cached),
+        cache_key: item.cache_key || "",
+        decision: item.decision || "",
+        error: item.error || "",
+        created_at: item.created_at || "",
+        updated_at: item.updated_at || "",
+        section_count: Object.keys(sections).length || Number(item.section_count || 0),
+      };
+    }
+
+    function readCachedReportsSnapshot() {
+      const payload = safeReadJson(REPORTS_HISTORY_CACHE_KEY);
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      return items.filter((item) => item && item.task_id && item.status === "completed");
+    }
+
+    function writeCachedReportsSnapshot(items) {
+      const slimItems = (items || [])
+        .filter((item) => item?.status === "completed")
+        .map(slimReportForStorage)
+        .filter(Boolean)
+        .slice(0, REPORTS_HISTORY_CACHE_LIMIT);
+      if (!slimItems.length) {
+        clearCachedReportsSnapshot();
+        return;
+      }
+      safeWriteJson(REPORTS_HISTORY_CACHE_KEY, {
+        version: 1,
+        source: "localStorage snapshot; DB 为准",
+        updated_at: new Date().toISOString(),
+        items: slimItems,
+      });
+    }
+
+    function clearCachedReportsSnapshot() {
+      safeRemoveStorage(REPORTS_HISTORY_CACHE_KEY);
+    }
+
+    function formatReportCardTitle(tsCode, explicitName = "") {
+      const code = String(tsCode || "").trim() || "--";
+      if (code === "--") return "--";
+      const name = resolveStockDisplayName(code, explicitName);
+      return name ? `${name} ${code}` : code;
+    }
+
     const reportList = document.querySelector("#report-list");
     const refreshButton = document.querySelector("#refresh-reports");
+    const clearButton = document.querySelector("#clear-reports");
     const detailCode = document.querySelector("#detail-code");
+    const detailName = document.querySelector("#detail-name");
     const detailDate = document.querySelector("#detail-date");
     const detailStatus = document.querySelector("#detail-status");
     const detailSections = document.querySelector("#detail-sections");
@@ -254,39 +464,34 @@
 
     function setDetail(item) {
       const sections = Object.keys(item.report_sections || {});
-      detailCode.textContent = item.request?.ts_code || item.ts_code || "--";
+      const sectionCount = sections.length || Number(item.section_count || 0);
+      const ts = item.request?.ts_code || item.ts_code || "";
+      const requestName = item.request?.stock_name || item.stock_name || "";
+      detailCode.textContent = ts || "--";
+      detailName.textContent = resolveStockDisplayName(ts, requestName) || "—";
       detailDate.textContent = item.request?.trade_date || item.trade_date || "--";
       detailStatus.textContent = statusText(item.status);
-      detailSections.textContent = sections.length ? `${sections.length} 个` : "暂无";
+      detailSections.textContent = sectionCount ? `${sectionCount} 个` : "暂无";
       detailCache.textContent = item.cache_key || "--";
       detailError.textContent = item.error || "--";
     }
 
-    async function restoreReport(item) {
-      if (item.status !== "completed") {
-        if (item.task_id) {
-          await fetch(`/api/analysis/${encodeURIComponent(item.task_id)}`);
-        }
-        window.location.href = "/";
+    function openReportTask(item) {
+      const taskId = String(item?.task_id || "").trim();
+      if (!taskId) {
+        alert("该历史报告缺少 task_id，无法载入。");
         return;
       }
-      const response = await fetch("/api/analysis/restore", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...item.request, force_refresh: false }),
-      });
-      if (!response.ok) {
-        alert("未找到项目内报告缓存，可能该任务尚未完成或缓存已清空。");
-        return;
-      }
-      window.location.href = "/";
+      window.location.href = `/?task_id=${encodeURIComponent(taskId)}`;
     }
 
     async function deleteReport(item) {
       const code = item.request?.ts_code || item.ts_code || "--";
+      const requestName = item.request?.stock_name || item.stock_name || "";
       const tradeDate = item.request?.trade_date || item.trade_date || "--";
+      const titleLabel = formatReportCardTitle(code, requestName);
       const confirmed = window.confirm(
-        `确认删除 ${code} / ${tradeDate} 的历史记录？\n\n这会删除 MySQL 任务记录，以及当前项目 .tradingagents-runtime 下对应的分析缓存和原始报告文件。`
+        `确认删除 ${titleLabel} / ${tradeDate} 的历史记录？\n\n这会删除 MySQL 任务记录，以及当前项目 .tradingagents-runtime 下对应的分析缓存和原始报告文件。`
       );
       if (!confirmed) {
         return;
@@ -306,32 +511,42 @@
     }
 
     function reportActionText(item) {
-      if (item.status === "completed") {
-        return "载入报告";
-      }
-      const sections = Object.keys(item.report_sections || {});
-      return sections.length ? "查看片段" : "回到工作台";
+      return "载入报告";
     }
 
-    function renderReports(items) {
+    function renderReports(items, sourceNote = "") {
       if (!items.length) {
-        reportList.innerHTML = '<div class="detail-muted">暂无历史分析记录。</div>';
+        const note = sourceNote ? `<div class="detail-muted">${escapeHtml(sourceNote)}</div>` : "";
+        reportList.innerHTML = `${note}<div class="detail-muted">暂无已完成历史报告。进行中任务请到 Hot Radar 当前分析队列查看。</div>`;
         return;
       }
 
       reportList.innerHTML = "";
+      if (sourceNote) {
+        const note = document.createElement("div");
+        note.className = "detail-muted";
+        note.textContent = sourceNote;
+        reportList.appendChild(note);
+      }
       items.forEach((item) => {
         const row = document.createElement("article");
         row.className = "report-item";
+        const tsRaw = item.request?.ts_code || item.ts_code || "--";
+        const nameRaw = item.request?.stock_name || item.stock_name || "";
+        const tdRaw = item.request?.trade_date || item.trade_date || "--";
+        const updRaw = item.updated_at || "--";
+        const prov = item.request?.llm_provider || "deepseek";
+        const qm = item.request?.quick_model || "deepseek-v4-pro";
+        const rd = item.request?.research_depth ?? "--";
         row.innerHTML = `
           <header>
             <div>
-              <strong>${item.request?.ts_code || item.ts_code || "--"}</strong>
-              <small>${item.request?.trade_date || item.trade_date || "--"} · updated ${item.updated_at || "--"}</small>
+              <strong>${escapeHtml(formatReportCardTitle(tsRaw, nameRaw))}</strong>
+              <small>${escapeHtml(tdRaw)} · updated ${escapeHtml(updRaw)}</small>
             </div>
-            <span class="badge ${item.status || ""}">${statusText(item.status)}</span>
+            <span class="badge ${item.status || ""}">${escapeHtml(statusText(item.status))}</span>
           </header>
-          <small>模型：${item.request?.llm_provider || "deepseek"} / ${item.request?.quick_model || "deepseek-v4-flash"} · 深度 ${item.request?.research_depth || "--"}</small>
+          <small>模型：${escapeHtml(prov)} / ${escapeHtml(qm)} · 深度 ${escapeHtml(String(rd))}</small>
           <div class="report-actions">
             <button class="primary" type="button" data-action="restore">${reportActionText(item)}</button>
             <button class="danger" type="button" data-action="delete">删除记录</button>
@@ -341,7 +556,7 @@
         row.addEventListener("click", () => setDetail(item));
         row.querySelector('[data-action="restore"]').addEventListener("click", (event) => {
           event.stopPropagation();
-          restoreReport(item);
+          openReportTask(item);
         });
         row.querySelector('[data-action="delete"]').addEventListener("click", (event) => {
           event.stopPropagation();
@@ -354,20 +569,57 @@
 
     async function loadReports() {
       refreshButton.disabled = true;
-      refreshButton.textContent = "刷新中";
+      const cachedItems = readCachedReportsSnapshot();
+      const showedCache = cachedItems.length > 0;
+      if (showedCache) {
+        renderReports(cachedItems, "已先显示本地快照，正在刷新 DB；最终以 DB 返回为准。");
+      }
+      refreshButton.textContent = showedCache ? "刷新 DB 中" : "刷新中";
       try {
-        const response = await fetch("/api/analysis/history");
+        const response = await fetch("/api/analysis/history?status=completed");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const body = await response.json();
-        renderReports(body.items || []);
+        const apiReports = (body.items || []).filter((item) => item.status === "completed");
+        const hydrated = await hydrateReportNames(apiReports);
+        renderReports(hydrated);
+        writeCachedReportsSnapshot(hydrated);
       } catch (error) {
-        reportList.innerHTML = '<div class="detail-muted">历史报告读取失败，请确认 Web 服务和 MySQL 仍在运行。</div>';
+        if (showedCache) {
+          renderReports(cachedItems, "本地快照：DB 刷新失败，当前列表可能不是最新结果。");
+        } else {
+          reportList.innerHTML = '<div class="detail-muted">历史报告读取失败，请确认 Web 服务和 MySQL 仍在运行。</div>';
+        }
       } finally {
         refreshButton.disabled = false;
         refreshButton.textContent = "刷新列表";
       }
     }
 
+    async function clearAllReports() {
+      const confirmed = window.confirm(
+        "确认清空所有已完成的历史报告？\n\n这会一次性删除：\n· MySQL 任务索引中所有 status = completed 的记录\n· 项目内 .tradingagents-runtime 下对应的分析缓存与报告文件\n· 用户家目录 ~/.tradingagents/cache 下对应的分析缓存\n\n该操作不可恢复，运行中 / 排队中的任务不会被影响。"
+      );
+      if (!confirmed) return;
+      clearButton.disabled = true;
+      clearButton.textContent = "清空中…";
+      try {
+        const response = await fetch("/api/analysis/history?status=completed", { method: "DELETE" });
+        if (!response.ok) {
+          alert("清空失败，请确认 Web 服务正在运行。");
+          return;
+        }
+        clearCachedReportsSnapshot();
+        await loadReports();
+      } catch (_) {
+        alert("清空失败，请确认 Web 服务正在运行。");
+      } finally {
+        clearButton.disabled = false;
+        clearButton.textContent = "一键清空";
+      }
+    }
+
     refreshButton.addEventListener("click", loadReports);
+    clearButton.addEventListener("click", clearAllReports);
     loadReports();
   </script>
 </body>

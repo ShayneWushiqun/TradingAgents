@@ -20,7 +20,7 @@ import pandas as pd
 
 
 def main() -> None:
-    trade_date = os.getenv("TRADE_DATE", "20260501")  # YYYYMMDD
+    trade_date = os.getenv("TRADE_DATE", "20260504")  # YYYYMMDD
     market = os.getenv("MARKET", "热股")
     is_new = os.getenv("IS_NEW", "Y")
 

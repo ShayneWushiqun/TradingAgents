@@ -32,6 +32,12 @@ class AnalysisTask:
     decision: str = ""
     error: str = ""
     cached: bool = False
+    origin: str = "analyze"
+    lane: str = "pro"
+    priority: int = 100
+    queue_position: int = 0
+    stop_requested: bool = False
+    removed_from_queue: bool = False
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -40,10 +46,30 @@ class TaskRegistry:
     def __init__(self) -> None:
         self._tasks: dict[str, AnalysisTask] = {}
         self._condition = threading.Condition()
+        self._sequence = 0
+
+    def _next_position(self) -> int:
+        self._sequence += 1
+        return self._sequence
+
+    @staticmethod
+    def lane_for_request(request: AnalysisRequest) -> str:
+        return "flash" if request.quick_model == "deepseek-v4-flash" or request.deep_model == "deepseek-v4-flash" else "pro"
+
+    @staticmethod
+    def priority_for_request(request: AnalysisRequest) -> int:
+        return 100 if request.origin == "analyze" else 50
 
     def create(self, request: AnalysisRequest) -> AnalysisTask:
         with self._condition:
-            task = AnalysisTask(task_id=uuid4().hex, request=request)
+            task = AnalysisTask(
+                task_id=uuid4().hex,
+                request=request,
+                origin=request.origin,
+                lane=self.lane_for_request(request),
+                priority=self.priority_for_request(request),
+                queue_position=self._next_position(),
+            )
             self._tasks[task.task_id] = task
             return task
 
@@ -68,6 +94,10 @@ class TaskRegistry:
                 decision=decision,
                 error=error,
                 cached=cached,
+                origin=request.origin,
+                lane=self.lane_for_request(request),
+                priority=self.priority_for_request(request),
+                queue_position=self._next_position(),
             )
             self._tasks[task.task_id] = task
             return task
@@ -92,6 +122,74 @@ class TaskRegistry:
             if not self._tasks:
                 return None
             return max(self._tasks.values(), key=lambda task: task.updated_at)
+
+    def list_recent(self, limit: int = 50, status: str | None = None) -> list[AnalysisTask]:
+        """In-memory tasks, newest ``updated_at`` first. Optional ``status`` filters before truncating."""
+        cap = max(1, min(int(limit), 200))
+        want = str(status or "").strip()
+        with self._condition:
+            ordered = sorted(
+                self._tasks.values(),
+                key=lambda task: task.updated_at,
+                reverse=True,
+            )
+            if want:
+                ordered = [t for t in ordered if str(t.status) == want]
+            return ordered[:cap]
+
+    def queued_for_lane(self, lane: str) -> list[AnalysisTask]:
+        with self._condition:
+            return sorted(
+                [
+                    task
+                    for task in self._tasks.values()
+                    if task.lane == lane and task.status == "queued" and not task.removed_from_queue
+                ],
+                key=lambda task: (-task.priority, task.queue_position, task.created_at),
+            )
+
+    def running_for_lane(self, lane: str) -> list[AnalysisTask]:
+        with self._condition:
+            return sorted(
+                [
+                    task
+                    for task in self._tasks.values()
+                    if task.lane == lane and task.status == "running" and not task.removed_from_queue
+                ],
+                key=lambda task: task.updated_at,
+            )
+
+    def queue_visible_for_lane(self, lane: str, statuses: set[str]) -> list[AnalysisTask]:
+        with self._condition:
+            return sorted(
+                [
+                    task
+                    for task in self._tasks.values()
+                    if task.lane == lane and task.status in statuses and not task.removed_from_queue
+                ],
+                key=lambda task: (-task.priority, task.queue_position, task.created_at),
+            )
+
+    def mark_removed_from_queue(self, task_id: str) -> AnalysisTask | None:
+        with self._condition:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            task.removed_from_queue = True
+            task.updated_at = datetime.utcnow()
+            self._condition.notify_all()
+            return task
+
+    def mark_stopped(self, task_id: str) -> AnalysisTask | None:
+        with self._condition:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            task.status = "stopped"
+            task.stop_requested = True
+            task.updated_at = datetime.utcnow()
+            self._condition.notify_all()
+            return task
 
     def add_event(self, task_id: str, event: str, data: dict | None = None) -> dict:
         with self._condition:

@@ -102,6 +102,7 @@
       font-size: 12px;
     }
 
+
     @media (max-width: 1080px) {
       .grid {
         grid-template-columns: 1fr;
@@ -111,6 +112,7 @@
         grid-column: auto;
       }
     }
+
   </style>
 </head>
 <body>
@@ -161,10 +163,10 @@
 
         <article class="card">
           <h3>DeepSeek</h3>
-          <p>当前默认 quick/deep 模型均使用 deepseek-v4-flash，Agent Chat 专家模式使用 deepseek-v4-pro。</p>
+          <p>报告分析模型在「分析」入口弹窗内即时切换（V4 Pro / V4 Flash），按行选择并保存在本机。</p>
           <div class="status ok">
-            <strong>默认模型已配置</strong>
-            <span>llm_provider=deepseek · quick_model=deepseek-v4-flash · deep_model=deepseek-v4-flash · expert=deepseek-v4-pro</span>
+            <strong>对话与报告</strong>
+            <span>Agent Chat 默认仍使用 deepseek-v4-flash；专家模式对话使用 deepseek-v4-pro。此处不修改对话默认。</span>
           </div>
         </article>
 

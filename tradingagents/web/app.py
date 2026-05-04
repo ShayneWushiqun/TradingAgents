@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from urllib.parse import quote
 
-from tradingagents.dataflows.tushare_stock import get_stock_snapshot
+from tradingagents.dataflows.tushare_stock import get_stock_snapshot, resolve_stock_name
 from tradingagents.web.analysis_cache import AnalysisCache
 from tradingagents.web.analysis_service import AnalysisRunner, AnalysisService
 from tradingagents.web.analysis_store import AnalysisStore
@@ -133,6 +133,20 @@ def create_app(
     def stock_snapshot(ts_code: str, trade_date: str) -> dict:
         return get_stock_snapshot(ts_code, trade_date)
 
+    @app.get("/api/stocks/{ts_code}/name")
+    def stock_display_name(ts_code: str) -> dict:
+        """Chinese security name from Tushare ``stock_basic`` (never raises HTTP 500)."""
+
+        try:
+            normalized = AnalysisRequest(ts_code=ts_code, trade_date="2026-01-01").ts_code
+        except Exception:
+            return {"ts_code": (ts_code or "").strip().upper(), "stock_name": ""}
+        try:
+            name = resolve_stock_name(normalized)
+        except Exception:
+            name = ""
+        return {"ts_code": normalized, "stock_name": (name or "").strip()}
+
     @app.get("/api/hot-radar/trade-dates")
     def hot_radar_trade_dates(end_date: str | None = None, limit: int = 30) -> dict:
         return {"items": hot_radar_service.trade_dates(end_date=end_date, limit=limit)}
@@ -144,7 +158,7 @@ def create_app(
         top_n: int = 20,
         fetch_if_missing: bool = True,
     ) -> dict:
-        """When ``fetch_if_missing`` (default True) and nothing is persisted for the day batch, pulls ths_hot once."""
+        """``fetch_if_missing`` (default True): walks open days backward until a non-empty snapshot is found or pulled."""
 
         return hot_radar_service.get_dashboard(
             trade_date,
@@ -174,13 +188,16 @@ def create_app(
             request.trade_date,
             request.batch_time,
             top_n=request.top_n,
+            quick_model=request.quick_model,
+            deep_model=request.deep_model,
         )
 
     def task_payload(task) -> dict:
+        req = analysis_service.enrich_request_for_response(task.request)
         return {
             "task_id": task.task_id,
             "status": task.status,
-            "request": task.request.model_dump(),
+            "request": req.model_dump(),
             "report_sections": task.report_sections,
             "final_decision": task.final_decision,
             "decision": task.decision,
@@ -216,10 +233,47 @@ def create_app(
         return task_payload(task)
 
     @app.get("/api/analysis/history")
-    def analysis_history(limit: int = 50) -> dict:
+    def analysis_history(limit: int = 50, status: str | None = None) -> dict:
         """Recent analysis tasks ordered by ``updated_at`` desc (persistent store)."""
 
-        return {"items": analysis_service.history(limit=limit)}
+        return {"items": analysis_service.history(limit=limit, status=status)}
+
+    @app.delete("/api/analysis/history")
+    def analysis_history_clear(status: str | None = "completed") -> dict:
+        """One-shot purge of completed reports (registered before ``/api/analysis/{task_id}``)."""
+
+        wanted = str(status or "").strip()
+        if wanted and wanted != "completed":
+            raise HTTPException(status_code=400, detail="only status=completed bulk-clear is supported")
+        return analysis_service.clear_completed_history()
+
+    @app.get("/api/analysis/queue")
+    def analysis_queue() -> dict:
+        return analysis_service.queue_status()
+
+    @app.post("/api/analysis/{task_id}/priority")
+    def analysis_queue_priority(task_id: str, request: dict) -> dict:
+        result = analysis_service.move_queue_task(
+            task_id,
+            direction=str(request.get("direction") or ""),
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="analysis task not found")
+        return result
+
+    @app.post("/api/analysis/{task_id}/stop")
+    def analysis_queue_stop(task_id: str) -> dict:
+        result = analysis_service.stop_task(task_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="analysis task not found")
+        return result
+
+    @app.delete("/api/analysis/queue/{task_id}")
+    def analysis_queue_delete(task_id: str) -> dict:
+        result = analysis_service.delete_queue_entry(task_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="analysis task not found")
+        return result
 
     @app.get("/api/analysis/{task_id}")
     def analysis_status(task_id: str) -> dict:
