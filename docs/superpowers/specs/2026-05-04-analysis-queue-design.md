@@ -92,8 +92,10 @@ Controls:
 
 - Queued tasks: move up, move down, delete.
 - Running tasks: stop.
-- Completed tasks: open report.
-- Failed or stopped tasks: optionally retry later through the same modal or Analyze page.
+- Completed tasks: open report, remove from queue list.
+- Failed or stopped tasks: remove from queue list, optionally retry later through the same modal or Analyze page.
+
+Removing a task from the queue list only hides it from the current execution queue view. It must not delete the historical report record or report cache. Historical report deletion remains a separate Reports-page action.
 
 ## Backend Queue Semantics
 
@@ -108,11 +110,14 @@ queued -> stopped
 running -> stopping -> stopped
 running -> failed
 running -> completed
+stopped -> deleted
+completed -> removed_from_queue
+failed -> removed_from_queue
 ```
 
 Stopping a running task is cooperative. If the underlying LLM call cannot be interrupted immediately, the task enters `stopping` and the UI explains that the stop request has been sent.
 
-Deleting is only allowed for queued tasks. Historical deletion for completed/failed tasks keeps the existing reports-page behavior.
+Queue deletion is allowed for queued and stopped tasks. Completed and failed tasks can be removed from the queue list, but that queue-list removal is not historical deletion. Historical deletion for completed/failed reports keeps the existing Reports-page behavior.
 
 ## API Shape
 
@@ -128,6 +133,7 @@ New:
 - `GET /api/analysis/queue`: returns lanes, running tasks, queued tasks, and capacity.
 - `POST /api/analysis/{task_id}/priority`: move a queued task up/down or set absolute position within its lane.
 - `POST /api/analysis/{task_id}/stop`: request stop for queued/running task.
+- `DELETE /api/analysis/queue/{task_id}` or equivalent queue-delete endpoint: delete queued/stopped queue entries and remove completed/failed entries from the queue list without deleting historical reports.
 
 Queue payloads should include enough display data for the UI. If a task was created from Hot Radar, include the stock name supplied by the row so the queue does not fall back to code-only display.
 
@@ -135,8 +141,9 @@ Queue payloads should include enough display data for the UI. If a task was crea
 
 - If task creation fails, keep the modal open and show the error.
 - If queue refresh fails, show the last known queue plus a small stale-data warning.
-- If deleting a task fails because it already started, refresh the queue and show that it is now running.
+- If deleting a queued task fails because it already started, refresh the queue and show that it is now running.
 - If stopping is requested for a completed task, treat it as a no-op and refresh state.
+- If removing a completed task from the queue list succeeds, keep the task available in `/api/analysis/history` and the Reports page.
 - If cache hit completes immediately, the task may move from queued to completed without entering running.
 
 ## Persistence
@@ -148,6 +155,7 @@ The existing MySQL analysis store keeps task history. Queue-specific fields shou
 - priority.
 - queue position.
 - stop requested flag.
+- queue visibility or removed-from-queue flag.
 
 When the store is unavailable, in-memory queue behavior is acceptable for the current local workstation mode.
 
@@ -160,6 +168,8 @@ Backend tests:
 - Analyze-origin tasks outrank Hot Radar tasks in the same lane.
 - Moving queued tasks changes dispatch order.
 - Deleting queued tasks removes them.
+- Deleting stopped tasks removes them from the queue list.
+- Removing completed tasks hides them from the queue list while preserving history.
 - Deleting running tasks is blocked or converted to stop according to API.
 - Stop request moves running tasks to stopping/stopped when cooperative cancellation is observed.
 - No-store history still returns all recent tasks.
