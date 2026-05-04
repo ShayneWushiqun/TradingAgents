@@ -221,3 +221,6 @@ __marimo__/
 
 # Cache
 **/data_cache/
+
+# Local Docker image exports
+tradingagents-*.tar.gz

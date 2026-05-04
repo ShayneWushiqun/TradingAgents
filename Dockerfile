@@ -19,11 +19,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN useradd --create-home appuser
-USER appuser
+RUN useradd --create-home appuser \
+    && mkdir -p \
+        /home/appuser/app/.tradingagents-runtime/cache \
+        /home/appuser/app/.tradingagents-runtime/reports \
+        /home/appuser/app/.tradingagents-runtime/memory \
+        /home/appuser/.tradingagents/cache/web_analysis \
+    && chown -R appuser:appuser /home/appuser
 WORKDIR /home/appuser/app
 
 COPY --from=builder --chown=appuser:appuser /build .
+USER appuser
 
 EXPOSE 8000
 

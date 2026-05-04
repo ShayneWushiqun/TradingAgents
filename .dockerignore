@@ -20,5 +20,6 @@ eval_results
 .mypy_cache
 htmlcov
 *.log
+tradingagents-*.tar.gz
 Dockerfile
 docker-compose.yml
