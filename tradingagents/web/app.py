@@ -244,7 +244,7 @@ def create_app(
     scheduler_enabled = (
         enable_hot_radar_scheduler
         if enable_hot_radar_scheduler is not None
-        else os.getenv("HOT_RADAR_SCHEDULER_ENABLED", "1") != "0"
+        else os.getenv("HOT_RADAR_SCHEDULER_ENABLED", "0") == "1"
     )
     hot_radar_scheduler = HotRadarScheduler(hot_radar_service) if hot_radar_service is not None else None
     app.state.hot_radar_scheduler = hot_radar_scheduler

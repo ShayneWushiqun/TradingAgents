@@ -185,6 +185,32 @@ def test_workstation_uses_pro_model_for_standard_and_deep_analysis():
     assert "getSelectedReportModel" in html
 
 
+def test_workstation_can_reserve_analysis_into_queue():
+    html = Path("docs/design/a-share-workstation.html").read_text(encoding="utf-8")
+
+    required_labels = [
+        "预约分析",
+        'id="reserve-analysis"',
+        'id="reservation-modal"',
+        'id="reservation-stock-code"',
+        'id="reservation-trade-date"',
+        'data-reservation-analyst="market"',
+        'data-reservation-depth="3"',
+        'data-reservation-model="deepseek-v4-pro"',
+        "openReservationModal",
+        "submitReservationAnalysis",
+        "buildReservationPayload",
+        'origin: "analyze"',
+        "createAnalysis(payload)",
+        "已加入分析队列",
+    ]
+
+    for label in required_labels:
+        assert label in html
+
+    assert "connectAnalysisEvents(task.task_id)" not in html.split("async function submitReservationAnalysis", 1)[1].split("async function runAnalysis", 1)[0]
+
+
 def test_agent_chat_page_exists_with_task_context_and_chat_controls():
     html_path = Path("docs/design/agent-chat.html")
 
@@ -385,6 +411,18 @@ def test_reports_page_offers_one_click_clear_all_completed():
     assert 'method: "DELETE"' in reports_html
 
 
+def test_design_pages_do_not_open_reports_in_new_tabs():
+    """Report-view actions should navigate in the current tab (no window.open / target=_blank)."""
+
+    design_dir = Path("docs/design")
+    html_files = list(design_dir.glob("*.html"))
+    assert html_files
+
+    for path in html_files:
+        html = path.read_text(encoding="utf-8")
+        assert "window.open" not in html, f"{path} still contains window.open"
+        assert "_blank" not in html, f"{path} still contains target=_blank"
+
 def test_hot_radar_does_not_use_local_storage_for_task_state():
     html = Path("docs/design/hot-radar.html").read_text(encoding="utf-8")
 
@@ -494,6 +532,7 @@ def test_decision_signal_parser_prioritizes_structured_underweight_rating():
     assert parser_body.index("explicitFinalDecisionMatch") < parser_body.index("fromApi")
     assert "structuredMatch" in parser_body
     assert "最终决定" in parser_body
+    assert "最终裁决" in parser_body
     assert "卖出" in parser_body
     assert "return \"卖出\";" in parser_body
     assert "underweight" in parser_body
@@ -509,6 +548,7 @@ def test_hot_radar_decision_parser_prioritizes_chinese_final_sell():
 
     assert parser_body.index("explicitFinalDecisionMatch") < parser_body.index("fromApi")
     assert "最终决定" in parser_body
+    assert "最终裁决" in parser_body
     assert "卖出" in parser_body
     assert "return \"卖出\";" in parser_body
 
@@ -651,3 +691,6 @@ def test_hot_radar_calendar_sync_and_row_level_analysis_buttons():
     assert "10:00" not in html
     assert "12:00" not in html
     assert "17:00" not in html
+    assert "自动定时已启用" not in html
+    assert "等待定时任务写入" not in html
+    assert "自动分析已关闭" in html

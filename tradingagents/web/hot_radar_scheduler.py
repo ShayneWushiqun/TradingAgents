@@ -40,15 +40,24 @@ class HotRadarScheduler:
             wait_seconds = max(1.0, (next_run - now).total_seconds())
             if self._stop.wait(wait_seconds):
                 return
-            trade_dates = self.service.trade_dates(next_run.strftime("%Y-%m-%d"), limit=1)
-            if not trade_dates:
-                continue
             try:
-                # 每日一次：使用「截至当前日的最近交易日」，休市日与周末自动落到上一交易日。
-                trade_date = trade_dates[0]
-                self.service.run_batch(trade_date, "daily", top_n=self.top_n)
+                self._run_scheduled_once(next_run.strftime("%Y-%m-%d"))
             except Exception:
                 continue
+
+    def _run_scheduled_once(self, end_date: str) -> None:
+        trade_dates = self.service.trade_dates(end_date, limit=1)
+        if not trade_dates:
+            return
+        # Scheduled work may refresh the leaderboard snapshot, but must never
+        # enqueue Agent analysis tasks. Row-level analysis stays user initiated.
+        trade_date = trade_dates[0]
+        self.service.fetch_snapshot(
+            trade_date,
+            "daily",
+            top_n=self.top_n,
+            force_refresh=True,
+        )
 
     def _next_run(self, now: datetime) -> datetime:
         today = now.date()

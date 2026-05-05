@@ -785,6 +785,44 @@
     }
 
     @media (max-width: 760px) {
+      .hot-toolbar {
+        padding: 12px;
+      }
+
+      .hot-toolbar-meta {
+        gap: 10px;
+      }
+
+      .hot-toolbar-split {
+        display: none;
+      }
+
+      .toolbar-select,
+      .sync-latest-btn,
+      .tab,
+      .mini-btn {
+        min-height: 40px;
+      }
+
+      .sync-latest-btn {
+        padding: 0 18px;
+      }
+
+      .panel-head {
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+
+      .panel-head h2 {
+        font-size: 20px;
+        line-height: 26px;
+      }
+
+      .tabs {
+        gap: 10px;
+      }
+
       .insight-panel {
         grid-template-columns: 1fr;
       }
@@ -801,12 +839,12 @@
       <div class="topbar-leading">
         <div class="topbar-titles">
           <h1>A-Share Insight</h1>
-          <p class="topbar-sub">Hot Radar · 同花顺 ths_hot · 行级「分析」可并发新开工作台</p>
+          <p class="topbar-sub">Hot Radar · 同花顺 ths_hot · 手动同步榜单与行级分析</p>
         </div>
       </div>
       <div class="topbar-actions">
         <div class="status-pills">
-          <span class="pill green">自动定时已启用</span>
+          <span class="pill gray">自动分析已关闭</span>
           <span class="pill blue">热股 Top 20</span>
         </div>
         <button class="logout-button" type="button" data-logout-button>退出登录</button>
@@ -1032,7 +1070,7 @@
     let lastDashboardMeta = { meta: {}, run: {} };
 
     const EMPTY_HINT = {
-      热股: "暂无本地热股快照。本页不自动拉 Tushare，请点顶部「同步榜单」或等待定时任务写入。",
+      热股: "暂无本地热股快照。请点顶部「同步榜单」写入；不会自动触发批量分析。",
       ETF: "暂无本地 ETF 热榜条目。请点「同步榜单」一并写入热股快照。",
       行业板块: "暂无本地行业板块热榜条目。请点「同步榜单」。",
       概念板块: "暂无本地概念板块热榜条目。请点「同步榜单」。",
@@ -1284,26 +1322,28 @@
 
     function mapTierToCnLabel(tierEn) {
       const t = String(tierEn || "").toLowerCase();
-      if (/(^|\b)(buy|overweight|strong\s*buy)(\b|$)/.test(t)) return "增持";
-      if (/(^|\b)(underweight)(\b|$)/.test(t)) return "减仓";
-      if (/(^|\b)(sell)(\b|$)/.test(t)) return "卖出";
-      if (/(^|\b)(hold|neutral)(\b|$)/.test(t)) return "持有";
+      if (/(^|\b)(buy|overweight|strong\s*buy)(\b|$)|买入|增持/.test(t)) return "增持";
+      if (/(^|\b)(underweight)(\b|$)|减仓|减持|减配/.test(t)) return "减仓";
+      if (/(^|\b)(sell)(\b|$)|卖出|清仓/.test(t)) return "卖出";
+      if (/(^|\b)(hold|neutral)(\b|$)|持有|中性|观望/.test(t)) return "持有";
       return "";
     }
 
     function extractFiveTierFromReport(text) {
       const raw = String(text || "");
       const labelRe =
-        /(?:^|\n)\s*\*{0,2}\s*(?:rating|评级|最终评级)\s*\*{0,2}\s*[：:\-]\s*\*{0,2}\s*\b(Buy|Overweight|Hold|Underweight|Sell)\b/im;
+        /(?:^|\n)\s*\*{0,2}\s*(?:rating|评级|最终评级|最终裁决)\s*\*{0,2}\s*[：:\-]\s*\*{0,2}(Buy|Overweight|Hold|Underweight|Sell|买入|增持|持有|观望|中性|减仓|减持|减配|卖出|清仓)/im;
       const lm = raw.match(labelRe);
       if (lm) return mapTierToCnLabel(lm[1]);
 
       const head = raw.split(/\n/).slice(0, 120);
-      const hintRe = /(rating|评级|最终评级|recommendation|action)\s*[：:]/i;
+      const hintRe = /(rating|评级|最终评级|最终裁决|recommendation|action)\s*[：:]/i;
       const ordered = [...head.filter((ln) => hintRe.test(ln)), ...head.filter((ln) => !hintRe.test(ln))];
       for (const line of ordered) {
         const m = line.match(/\b(Buy|Overweight|Hold|Underweight|Sell)\b/i);
         if (m) return mapTierToCnLabel(m[1]);
+        const cm = hintRe.test(line) ? line.match(/(买入|增持|持有|观望|中性|减仓|减持|减配|卖出|清仓)/) : null;
+        if (cm) return mapTierToCnLabel(cm[1]);
       }
       return "";
     }
@@ -1321,7 +1361,7 @@
 
       const cleaned = String(text || "").replace(/\*\*/g, "");
       const explicitFinalDecisionMatch = cleaned.match(
-        /(?:最终决定|最终决策|最终交易决策|交易决策|操作建议|final\s+(?:decision|trade\s+decision)|final\s+transaction\s+proposal|rating|action|recommendation)\s*[：:\-]\s*([^\n。；;]+)/i
+        /(?:最终决定|最终决策|最终裁决|最终交易决策|交易决策|操作建议|final\s+(?:decision|trade\s+decision)|final\s+transaction\s+proposal|rating|action|recommendation)\s*[：:\-]\s*([^\n。；;]+)/i
       );
       const explicitFinalSignal = normalizeLoose(explicitFinalDecisionMatch?.[1]);
       if (explicitFinalSignal) return explicitFinalSignal;
@@ -1743,11 +1783,10 @@
                 `<span class="decision-chip ${pm.tone}"${detailAttr(pm.line, "组合经理")}>${escapeHtml(pm.line)}</span>`,
               );
               /* 「报告」shows progress for running/stopping or the captured report for completed/stopped/failed; queued has nothing yet.
-                 Use <a href target="_blank"> rather than window.open so browsers always treat it as a user-initiated navigation
-                 (avoids popup-blocker false-positives during the 12s background refresh). */
+                 Navigate in the current tab to reduce resource usage. */
               if (reportStatus !== "queued") {
                 actionParts.push(
-                  `<a class="mini-btn" href="/?task_id=${encodeURIComponent(reportTaskId)}" target="_blank" rel="noopener noreferrer">报告</a>`,
+                  `<a class="mini-btn" href="/?task_id=${encodeURIComponent(reportTaskId)}">报告</a>`,
                 );
               }
               if (reportStatus === "queued") {
@@ -2118,16 +2157,16 @@
           <button class="mini-btn mini-btn-muted" type="button" data-queue-action="delete" data-task-id="${tid}">删除</button>`;
       } else if (row.status === "running" || row.status === "stopping") {
         actions = `
-          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}" target="_blank" rel="noopener noreferrer">报告</a>
+          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}">报告</a>
           <button class="mini-btn mini-btn-muted" type="button" data-queue-action="stop" data-task-id="${tid}">停止</button>`;
       } else if (row.status === "completed") {
         actions = `
-          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}" target="_blank" rel="noopener noreferrer">报告</a>
+          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}">报告</a>
           <button class="mini-btn mini-btn-muted" type="button" data-queue-action="delete" data-task-id="${tid}">移除</button>`;
       } else {
         /* failed / stopped — link to the partial report; no rerun here (use Hot Radar 「再次分析」). */
         actions = `
-          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}" target="_blank" rel="noopener noreferrer">报告</a>
+          <a class="mini-btn" href="/?task_id=${encodeURIComponent(row.task_id)}">报告</a>
           <button class="mini-btn mini-btn-muted" type="button" data-queue-action="delete" data-task-id="${tid}">移除</button>`;
       }
       return `
@@ -2247,7 +2286,7 @@
         );
         return;
       }
-      /* 「报告」 is now an <a target="_blank">; let the browser handle navigation natively. */
+      /* 「报告」 is a plain <a href> navigating in current tab. */
     });
 
     modalAnalystButtons.forEach((button) => {

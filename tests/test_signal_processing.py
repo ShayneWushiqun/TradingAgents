@@ -49,6 +49,14 @@ class TestParseRating:
         )
         assert parse_rating(text) == "Sell"
 
+    def test_chinese_final_verdict_sell_wins_over_default_hold(self):
+        text = (
+            "中立派的减持方案里也提到了持有。\n\n"
+            "二、最终裁决：卖出\n"
+            "基于以上分析，确认交易员最初的卖出决定。"
+        )
+        assert parse_rating(text) == "Sell"
+
     def test_chinese_final_decision_underweight(self):
         assert parse_rating("最终决策：减仓 600118.SH，控制风险。") == "Underweight"
 

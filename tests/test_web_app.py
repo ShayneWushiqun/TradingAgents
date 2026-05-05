@@ -96,6 +96,34 @@ def test_health_reports_mysql_backed_stores_when_database_url_is_set(tmp_path):
     assert body["database_required"] is False
 
 
+def test_hot_radar_scheduler_is_disabled_by_default(monkeypatch, tmp_path):
+    started = []
+
+    class SpyScheduler:
+        def __init__(self, service):
+            self.service = service
+
+        def start(self):
+            started.append("started")
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr("tradingagents.web.app.HotRadarScheduler", SpyScheduler)
+
+    with TestClient(
+        create_app(
+            database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
+            runtime_dir=tmp_path,
+            hot_snapshot_getter=lambda trade_date, top_n: {"trade_date": trade_date, "markets": {}},
+            trade_dates_getter=lambda end_date, limit: ["2026-04-30"],
+        )
+    ) as client:
+        assert client.get("/api/health").status_code == 200
+
+    assert started == []
+
+
 def test_index_serves_workstation_html():
     client = TestClient(create_app())
 

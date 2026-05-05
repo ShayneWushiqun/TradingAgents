@@ -44,23 +44,23 @@ def _labeled_rating_patterns() -> tuple[re.Pattern[str], ...]:
             re.IGNORECASE,
         ),
         re.compile(
-            rf"(?:\*{{0,2}}\s*)?(?:评级|最终评级)(?:\*{{0,2}}\s*)?[：:]\s*\*{{0,2}}\s*\b({_TIER_ALT})\b",
+            rf"(?:\*{{0,2}}\s*)?(?:评级|最终评级|最终裁决)(?:\*{{0,2}}\s*)?[：:]\s*\*{{0,2}}\s*\b({_TIER_ALT})\b",
             re.IGNORECASE,
         ),
         re.compile(
-            rf"(?:\*{{0,2}}\s*)?(?:评级|最终评级)(?:\*{{0,2}}\s*)?[：:]\s*\b({_TIER_ALT})\b",
+            rf"(?:\*{{0,2}}\s*)?(?:评级|最终评级|最终裁决)(?:\*{{0,2}}\s*)?[：:]\s*\b({_TIER_ALT})\b",
             re.IGNORECASE,
         ),
     )
 
 
 _LABELED_LINE_HINT = re.compile(
-    r"(rating|评级|最终评级|最终决定|最终决策|最终交易决策|recommendation\s*[:：]|action\s*[:：])",
+    r"(rating|评级|最终评级|最终裁决|最终决定|最终决策|最终交易决策|recommendation\s*[:：]|action\s*[:：])",
     re.IGNORECASE,
 )
 
 _CHINESE_RATING_LABEL_RE = re.compile(
-    r"(?:评级|最终评级|最终决定|最终决策|最终交易决策|交易决策|操作建议)\s*[：:\-]\s*"
+    r"(?:评级|最终评级|最终裁决|最终决定|最终决策|最终交易决策|交易决策|操作建议)\s*[：:\-]\s*"
     r"(?P<tier>买入|增持|持有|观望|中性|减仓|减持|减配|卖出|清仓)",
     re.IGNORECASE,
 )

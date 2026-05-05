@@ -28,7 +28,7 @@ services:
       - ${TRADINGAGENTS_ENV_FILE:-./.env}
     environment:
       TRADINGAGENTS_DB_URL: mysql+pymysql://${MYSQL_USER:-tradingagents}:${MYSQL_PASSWORD:-tradingagents}@tradingagents-mysql:3306/${MYSQL_DATABASE:-tradingagents}
-      HOT_RADAR_SCHEDULER_ENABLED: ${HOT_RADAR_SCHEDULER_ENABLED:-1}
+      HOT_RADAR_SCHEDULER_ENABLED: ${HOT_RADAR_SCHEDULER_ENABLED:-0}
     depends_on:
       tradingagents-mysql:
         condition: service_healthy
